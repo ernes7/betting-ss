@@ -1,7 +1,8 @@
 [x] - Extract Rankings
 [x] - CLI
-[ ] - Individual Teams Pages
+[x] - Individual Teams Pages
 [ ] - Odds Pages
-[ ] - Document Predictions
+[x] - Document Predictions
 [ ] - Fetch Results
 [ ] - Prompt Enhancement
+[ ] - Improve Injury Report

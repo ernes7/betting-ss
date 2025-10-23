@@ -1,0 +1,138 @@
+{
+  "table_name": "Week 8 Injury Report Table",
+  "headers": [
+    "player",
+    "pos",
+    "practice_status",
+    "status",
+    "injury_comment"
+  ],
+  "data": [
+    {
+      "player": "Junior Colson",
+      "pos": "LB",
+      "practice_status": "",
+      "status": "Injured Reserve",
+      "injury_comment": ""
+    },
+    {
+      "player": "Josh Fuga",
+      "pos": "DL",
+      "practice_status": "",
+      "status": "Injured Reserve",
+      "injury_comment": ""
+    },
+    {
+      "player": "Omarion Hampton",
+      "pos": "RB",
+      "practice_status": "",
+      "status": "Injured Reserve",
+      "injury_comment": ""
+    },
+    {
+      "player": "Da'Shawn Hand",
+      "pos": "DE",
+      "practice_status": "",
+      "status": "Injured Reserve",
+      "injury_comment": ""
+    },
+    {
+      "player": "Najee Harris",
+      "pos": "RB",
+      "practice_status": "",
+      "status": "Injured Reserve",
+      "injury_comment": ""
+    },
+    {
+      "player": "Otito Ogbonnia",
+      "pos": "DT",
+      "practice_status": "",
+      "status": "Injured Reserve",
+      "injury_comment": ""
+    },
+    {
+      "player": "Jordan Oladokun",
+      "pos": "CB",
+      "practice_status": "",
+      "status": "Injured Reserve",
+      "injury_comment": ""
+    },
+    {
+      "player": "Eric Rogers",
+      "pos": "WR",
+      "practice_status": "",
+      "status": "Injured Reserve",
+      "injury_comment": ""
+    },
+    {
+      "player": "Rashawn Slater",
+      "pos": "G",
+      "practice_status": "",
+      "status": "Injured Reserve",
+      "injury_comment": ""
+    },
+    {
+      "player": "Hassan Haskins",
+      "pos": "RB",
+      "practice_status": "DNP",
+      "status": "Out",
+      "injury_comment": "Hamstring"
+    },
+    {
+      "player": "Joe Alt",
+      "pos": "OL",
+      "practice_status": "Limited",
+      "status": "Questionable",
+      "injury_comment": "Ankle"
+    },
+    {
+      "player": "Jamaree Caldwell",
+      "pos": "DT",
+      "practice_status": "Limited",
+      "status": "Questionable",
+      "injury_comment": "Illness"
+    },
+    {
+      "player": "Austin Deculus",
+      "pos": "T",
+      "practice_status": "Limited",
+      "status": "Questionable",
+      "injury_comment": "Ankle"
+    },
+    {
+      "player": "Troy Dye",
+      "pos": "OLB",
+      "practice_status": "Limited",
+      "status": "Questionable",
+      "injury_comment": "Thumb"
+    },
+    {
+      "player": "Elijah Molden",
+      "pos": "DB",
+      "practice_status": "Limited",
+      "status": "Questionable",
+      "injury_comment": "Thumb"
+    },
+    {
+      "player": "Trey Pipkins",
+      "pos": "OT",
+      "practice_status": "Limited",
+      "status": "Questionable",
+      "injury_comment": "Knee"
+    },
+    {
+      "player": "Kyle Kennard",
+      "pos": "DE",
+      "practice_status": "Full",
+      "status": "",
+      "injury_comment": "Knee"
+    },
+    {
+      "player": "Jamaree Salyer",
+      "pos": "OL",
+      "practice_status": "Full",
+      "status": "",
+      "injury_comment": "Knee"
+    }
+  ]
+}

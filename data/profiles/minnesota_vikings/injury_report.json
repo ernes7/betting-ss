@@ -1,0 +1,124 @@
+{
+  "table_name": "Week 8 Injury Report Table",
+  "headers": [
+    "player",
+    "pos",
+    "practice_status",
+    "status",
+    "injury_comment"
+  ],
+  "data": [
+    {
+      "player": "Ty Chandler",
+      "pos": "RB",
+      "practice_status": "",
+      "status": "Injured Reserve",
+      "injury_comment": ""
+    },
+    {
+      "player": "Zeke Correll",
+      "pos": "C",
+      "practice_status": "",
+      "status": "Injured Reserve",
+      "injury_comment": ""
+    },
+    {
+      "player": "Aaron Jones",
+      "pos": "RB",
+      "practice_status": "",
+      "status": "Injured Reserve",
+      "injury_comment": ""
+    },
+    {
+      "player": "Ryan Kelly",
+      "pos": "C",
+      "practice_status": "",
+      "status": "Injured Reserve",
+      "injury_comment": ""
+    },
+    {
+      "player": "Rondale Moore",
+      "pos": "WR",
+      "practice_status": "",
+      "status": "Injured Reserve",
+      "injury_comment": ""
+    },
+    {
+      "player": "Matt Nelson",
+      "pos": "T",
+      "practice_status": "",
+      "status": "Injured Reserve",
+      "injury_comment": ""
+    },
+    {
+      "player": "C.J. Ham",
+      "pos": "RB",
+      "practice_status": "DNP",
+      "status": "Out",
+      "injury_comment": "Hand"
+    },
+    {
+      "player": "Andrew Van Ginkel",
+      "pos": "OLB",
+      "practice_status": "Limited",
+      "status": "Out",
+      "injury_comment": "Neck"
+    },
+    {
+      "player": "Christian Darrisaw",
+      "pos": "OL",
+      "practice_status": "DNP",
+      "status": "Questionable",
+      "injury_comment": "Knee"
+    },
+    {
+      "player": "Aaron Jones",
+      "pos": "RB",
+      "practice_status": "Limited",
+      "status": "Questionable",
+      "injury_comment": "Hamstring"
+    },
+    {
+      "player": "J.J. McCarthy",
+      "pos": "QB",
+      "practice_status": "Limited",
+      "status": "Questionable",
+      "injury_comment": "Ankle"
+    },
+    {
+      "player": "Brian O'Neill",
+      "pos": "OT",
+      "practice_status": "Limited",
+      "status": "Questionable",
+      "injury_comment": "Knee"
+    },
+    {
+      "player": "Zavier Scott",
+      "pos": "RB",
+      "practice_status": "Limited",
+      "status": "Questionable",
+      "injury_comment": "Wrist"
+    },
+    {
+      "player": "Tyrion Ingram-Dawkins",
+      "pos": "DE",
+      "practice_status": "Full",
+      "status": "",
+      "injury_comment": "Hip"
+    },
+    {
+      "player": "Donovan Jackson",
+      "pos": "OL",
+      "practice_status": "Full",
+      "status": "",
+      "injury_comment": "Wrist"
+    },
+    {
+      "player": "Carson Wentz",
+      "pos": "QB",
+      "practice_status": "Full",
+      "status": "",
+      "injury_comment": "Shoulder"
+    }
+  ]
+}

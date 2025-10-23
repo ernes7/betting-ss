@@ -8,9 +8,16 @@ import re
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
+from ratelimit import limits, sleep_and_retry
 from tqdm import tqdm
 
-from constants import DATA_RANKINGS_DIR, NFL_STATS_URL, RANKING_TABLES
+from constants import (
+    DATA_RANKINGS_DIR,
+    NFL_STATS_URL,
+    PFR_RATE_LIMIT_CALLS,
+    PFR_RATE_LIMIT_PERIOD,
+    RANKING_TABLES,
+)
 
 
 def table_name_to_filename(table_name: str) -> str:
@@ -98,6 +105,8 @@ def extract_single_table(page, table_id: str, output_name: str, output_dir: str,
         return False
 
 
+@sleep_and_retry
+@limits(calls=PFR_RATE_LIMIT_CALLS, period=PFR_RATE_LIMIT_PERIOD)
 def extract_all_rankings(url: str = NFL_STATS_URL, output_dir: str = DATA_RANKINGS_DIR) -> dict:
     """
     Extract all ranking tables from URL in one page load.

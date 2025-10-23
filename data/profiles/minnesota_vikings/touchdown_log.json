@@ -1,0 +1,181 @@
+{
+  "table_name": "Touchdown Log Table",
+  "headers": [
+    "ranker",
+    "game_date",
+    "at_or_vs",
+    "opp",
+    "game_result",
+    "quarter",
+    "distance",
+    "score_type",
+    "description"
+  ],
+  "data": [
+    {
+      "ranker": "1",
+      "game_date": "2025-09-08",
+      "at_or_vs": "@",
+      "opp": "CHI",
+      "game_result": "W, 27-24",
+      "quarter": "4",
+      "distance": "13",
+      "score_type": "pass",
+      "description": "Justin Jefferson 13 yard pass from J.J. McCarthy (pass failed)"
+    },
+    {
+      "ranker": "2",
+      "game_date": "2025-09-08",
+      "at_or_vs": "@",
+      "opp": "CHI",
+      "game_result": "W, 27-24",
+      "quarter": "4",
+      "distance": "27",
+      "score_type": "pass",
+      "description": "Aaron Jones 27 yard pass from J.J. McCarthy (Adam Thielen pass from J.J. McCarthy)"
+    },
+    {
+      "ranker": "3",
+      "game_date": "2025-09-08",
+      "at_or_vs": "@",
+      "opp": "CHI",
+      "game_result": "W, 27-24",
+      "quarter": "4",
+      "distance": "14",
+      "score_type": "rush",
+      "description": "J.J. McCarthy 14 yard rush (Will Reichard kick)"
+    },
+    {
+      "ranker": "4",
+      "game_date": "2025-09-21",
+      "at_or_vs": "",
+      "opp": "CIN",
+      "game_result": "W, 48-10",
+      "quarter": "1",
+      "distance": "12",
+      "score_type": "pass",
+      "description": "Josh Oliver 12 yard pass from Carson Wentz (Will Reichard kick)"
+    },
+    {
+      "ranker": "5",
+      "game_date": "2025-09-21",
+      "at_or_vs": "",
+      "opp": "CIN",
+      "game_result": "W, 48-10",
+      "quarter": "1",
+      "distance": "87",
+      "score_type": "interception",
+      "description": "Isaiah Rodgers 87 yard interception return (Will Reichard kick)"
+    },
+    {
+      "ranker": "6",
+      "game_date": "2025-09-21",
+      "at_or_vs": "",
+      "opp": "CIN",
+      "game_result": "W, 48-10",
+      "quarter": "2",
+      "distance": "66",
+      "score_type": "fumble",
+      "description": "Isaiah Rodgers 66 yard fumble return (Will Reichard kick)"
+    },
+    {
+      "ranker": "7",
+      "game_date": "2025-09-21",
+      "at_or_vs": "",
+      "opp": "CIN",
+      "game_result": "W, 48-10",
+      "quarter": "2",
+      "distance": "5",
+      "score_type": "rush",
+      "description": "Jordan Mason 5 yard rush (Will Reichard kick)"
+    },
+    {
+      "ranker": "8",
+      "game_date": "2025-09-21",
+      "at_or_vs": "",
+      "opp": "CIN",
+      "game_result": "W, 48-10",
+      "quarter": "3",
+      "distance": "4",
+      "score_type": "rush",
+      "description": "Jordan Mason 4 yard rush (Will Reichard kick)"
+    },
+    {
+      "ranker": "9",
+      "game_date": "2025-09-21",
+      "at_or_vs": "",
+      "opp": "CIN",
+      "game_result": "W, 48-10",
+      "quarter": "3",
+      "distance": "5",
+      "score_type": "pass",
+      "description": "T.J. Hockenson 5 yard pass from Carson Wentz (Will Reichard kick)"
+    },
+    {
+      "ranker": "10",
+      "game_date": "2025-09-28",
+      "at_or_vs": "@",
+      "opp": "PIT",
+      "game_result": "L, 21-24",
+      "quarter": "4",
+      "distance": "16",
+      "score_type": "pass",
+      "description": "Zavier Scott 16 yard pass from Carson Wentz (Jalen Nailor pass from Carson Wentz)"
+    },
+    {
+      "ranker": "11",
+      "game_date": "2025-09-28",
+      "at_or_vs": "@",
+      "opp": "PIT",
+      "game_result": "L, 21-24",
+      "quarter": "4",
+      "distance": "2",
+      "score_type": "pass",
+      "description": "Jalen Nailor 2 yard pass from Carson Wentz (Will Reichard kick)"
+    },
+    {
+      "ranker": "12",
+      "game_date": "2025-10-05",
+      "at_or_vs": "@",
+      "opp": "CLE",
+      "game_result": "W, 21-17",
+      "quarter": "1",
+      "distance": "32",
+      "score_type": "pass",
+      "description": "Josh Oliver 32 yard pass from Cam Akers (Will Reichard kick)"
+    },
+    {
+      "ranker": "13",
+      "game_date": "2025-10-05",
+      "at_or_vs": "@",
+      "opp": "CLE",
+      "game_result": "W, 21-17",
+      "quarter": "3",
+      "distance": "3",
+      "score_type": "rush",
+      "description": "Jordan Mason 3 yard rush (Will Reichard kick)"
+    },
+    {
+      "ranker": "14",
+      "game_date": "2025-10-05",
+      "at_or_vs": "@",
+      "opp": "CLE",
+      "game_result": "W, 21-17",
+      "quarter": "4",
+      "distance": "12",
+      "score_type": "pass",
+      "description": "Jordan Addison 12 yard pass from Carson Wentz (Will Reichard kick)"
+    },
+    {
+      "ranker": "15",
+      "game_date": "2025-10-19",
+      "at_or_vs": "",
+      "opp": "PHI",
+      "game_result": "L, 22-28",
+      "quarter": "3",
+      "distance": "1",
+      "score_type": "rush",
+      "description": "Jordan Mason 1 yard rush (Will Reichard kick)"
+    }
+  ]
+}

@@ -1,0 +1,181 @@
+{
+  "table_name": "Touchdown Log Table",
+  "headers": [
+    "ranker",
+    "game_date",
+    "at_or_vs",
+    "opp",
+    "game_result",
+    "quarter",
+    "distance",
+    "score_type",
+    "description"
+  ],
+  "data": [
+    {
+      "ranker": "1",
+      "game_date": "2025-09-05",
+      "at_or_vs": "",
+      "opp": "KAN",
+      "game_result": "W, 27-21",
+      "quarter": "1",
+      "distance": "5",
+      "score_type": "pass",
+      "description": "Quentin Johnston 5 yard pass from Justin Herbert (Cameron Dicker kick)"
+    },
+    {
+      "ranker": "2",
+      "game_date": "2025-09-05",
+      "at_or_vs": "",
+      "opp": "KAN",
+      "game_result": "W, 27-21",
+      "quarter": "3",
+      "distance": "11",
+      "score_type": "pass",
+      "description": "Keenan Allen 11 yard pass from Justin Herbert (Cameron Dicker kick)"
+    },
+    {
+      "ranker": "3",
+      "game_date": "2025-09-05",
+      "at_or_vs": "",
+      "opp": "KAN",
+      "game_result": "W, 27-21",
+      "quarter": "4",
+      "distance": "23",
+      "score_type": "pass",
+      "description": "Quentin Johnston 23 yard pass from Justin Herbert (Cameron Dicker kick)"
+    },
+    {
+      "ranker": "4",
+      "game_date": "2025-09-15",
+      "at_or_vs": "@",
+      "opp": "LVR",
+      "game_result": "W, 20-9",
+      "quarter": "1",
+      "distance": "10",
+      "score_type": "pass",
+      "description": "Keenan Allen 10 yard pass from Justin Herbert (Cameron Dicker kick)"
+    },
+    {
+      "ranker": "5",
+      "game_date": "2025-09-15",
+      "at_or_vs": "@",
+      "opp": "LVR",
+      "game_result": "W, 20-9",
+      "quarter": "2",
+      "distance": "60",
+      "score_type": "pass",
+      "description": "Quentin Johnston 60 yard pass from Justin Herbert (Cameron Dicker kick)"
+    },
+    {
+      "ranker": "6",
+      "game_date": "2025-09-21",
+      "at_or_vs": "",
+      "opp": "DEN",
+      "game_result": "W, 23-20",
+      "quarter": "2",
+      "distance": "3",
+      "score_type": "rush",
+      "description": "Omarion Hampton 3 yard rush (Cameron Dicker kick)"
+    },
+    {
+      "ranker": "7",
+      "game_date": "2025-09-21",
+      "at_or_vs": "",
+      "opp": "DEN",
+      "game_result": "W, 23-20",
+      "quarter": "4",
+      "distance": "20",
+      "score_type": "pass",
+      "description": "Keenan Allen 20 yard pass from Justin Herbert (Cameron Dicker kick)"
+    },
+    {
+      "ranker": "8",
+      "game_date": "2025-09-28",
+      "at_or_vs": "@",
+      "opp": "NYG",
+      "game_result": "L, 18-21",
+      "quarter": "2",
+      "distance": "36",
+      "score_type": "pass",
+      "description": "Quentin Johnston 36 yard pass from Justin Herbert (Cameron Dicker kick)"
+    },
+    {
+      "ranker": "9",
+      "game_date": "2025-09-28",
+      "at_or_vs": "@",
+      "opp": "NYG",
+      "game_result": "L, 18-21",
+      "quarter": "3",
+      "distance": "54",
+      "score_type": "rush",
+      "description": "Omarion Hampton 54 yard rush (Justin Herbert run)"
+    },
+    {
+      "ranker": "10",
+      "game_date": "2025-10-05",
+      "at_or_vs": "",
+      "opp": "WAS",
+      "game_result": "L, 10-27",
+      "quarter": "1",
+      "distance": "2",
+      "score_type": "pass",
+      "description": "Ladd McConkey 2 yard pass from Justin Herbert (Cameron Dicker kick)"
+    },
+    {
+      "ranker": "11",
+      "game_date": "2025-10-12",
+      "at_or_vs": "@",
+      "opp": "MIA",
+      "game_result": "W, 29-27",
+      "quarter": "3",
+      "distance": "5",
+      "score_type": "pass",
+      "description": "Ladd McConkey 5 yard pass from Justin Herbert (Cameron Dicker kick)"
+    },
+    {
+      "ranker": "12",
+      "game_date": "2025-10-12",
+      "at_or_vs": "@",
+      "opp": "MIA",
+      "game_result": "W, 29-27",
+      "quarter": "3",
+      "distance": "7",
+      "score_type": "pass",
+      "description": "Kimani Vidal 7 yard pass from Justin Herbert (Cameron Dicker kick)"
+    },
+    {
+      "ranker": "13",
+      "game_date": "2025-10-19",
+      "at_or_vs": "",
+      "opp": "IND",
+      "game_result": "L, 24-38",
+      "quarter": "3",
+      "distance": "7",
+      "score_type": "pass",
+      "description": "Quentin Johnston 7 yard pass from Justin Herbert (Cameron Dicker kick)"
+    },
+    {
+      "ranker": "14",
+      "game_date": "2025-10-19",
+      "at_or_vs": "",
+      "opp": "IND",
+      "game_result": "L, 24-38",
+      "quarter": "3",
+      "distance": "4",
+      "score_type": "pass",
+      "description": "Keenan Allen 4 yard pass from Justin Herbert (Cameron Dicker kick)"
+    },
+    {
+      "ranker": "15",
+      "game_date": "2025-10-19",
+      "at_or_vs": "",
+      "opp": "IND",
+      "game_result": "L, 24-38",
+      "quarter": "4",
+      "distance": "15",
+      "score_type": "pass",
+      "description": "Oronde Gadsden II 15 yard pass from Justin Herbert (Cameron Dicker kick)"
+    }
+  ]
+}

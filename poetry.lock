@@ -627,6 +627,16 @@ files = [
 cli = ["click (>=5.0)"]
 
 [[package]]
+name = "ratelimit"
+version = "2.2.1"
+description = "API rate limit decorator"
+optional = false
+python-versions = "*"
+files = [
+    {file = "ratelimit-2.2.1.tar.gz", hash = "sha256:af8a9b64b821529aca09ebaf6d8d279100d766f19e90b5059ac6a718ca6dee42"},
+]
+
+[[package]]
 name = "readchar"
 version = "4.2.1"
 description = "Library to easily read single chars and key strokes"
@@ -761,4 +771,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "d3dc351d87b8c30463c16104a4b2e1c5ccdde38978f2e29adfff2246a9119279"
+content-hash = "ee535f839b02b26e655650850866a7654266dcf5a93816d7b2ef77667be2e544"

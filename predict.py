@@ -11,6 +11,8 @@ from typing import Any
 import anthropic
 from dotenv import load_dotenv
 
+from prompt import build_prediction_prompt
+
 # Load environment variables
 load_dotenv()
 
@@ -98,35 +100,16 @@ def generate_parlays(
     if not team_a_stats or not team_b_stats:
         return f"Error: Could not find stats for {team_a} or {team_b} in rankings"
 
-    # Build the prompt
-    prompt = f"""You are an NFL betting analyst. Analyze the following matchup and generate TWO parlays:
-1. A parlay assuming {team_a} wins
-2. A parlay assuming {team_b} wins
-
-This hedges both outcomes so the bettor is covered either way.
-
-MATCHUP: {team_a} @ {team_b}
-HOME TEAM: {home_team}
-
-{team_a.upper()} STATS:
-{json.dumps(team_a_stats, indent=2)}
-
-{team_b.upper()} STATS:
-{json.dumps(team_b_stats, indent=2)}
-
-Based on this data, generate:
-
-PARLAY 1 - {team_a} Win Scenario:
-- Moneyline/spread pick
-- 2-3 prop bets that align with {team_a} winning
-- Brief reasoning
-
-PARLAY 2 - {team_b} Win Scenario:
-- Moneyline/spread pick
-- 2-3 prop bets that align with {team_b} winning
-- Brief reasoning
-
-Format your response clearly with sections for each parlay."""
+    # Build the prompt using prompt.py
+    prompt = build_prediction_prompt(
+        team_a=team_a,
+        team_b=team_b,
+        home_team=home_team,
+        team_a_stats=team_a_stats,
+        team_b_stats=team_b_stats,
+        profile_a=profile_a,
+        profile_b=profile_b,
+    )
 
     # Call Claude API
     client = anthropic.Anthropic(api_key=api_key)

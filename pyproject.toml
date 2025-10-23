@@ -12,6 +12,7 @@ anthropic = "^0.40.0"
 python-dotenv = "^1.0.0"
 tqdm = "^4.67.0"
 inquirer = "^3.4.0"
+ratelimit = "^2.2.1"
 
 
 [tool.poetry.group.dev.dependencies]
