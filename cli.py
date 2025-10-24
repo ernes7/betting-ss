@@ -3,43 +3,59 @@
 Interactive menu-based interface for extracting NFL stats and making predictions.
 """
 
-from cli_utils.extract import extract_rankings
+from rich.console import Console
+from rich.panel import Panel
+from rich.prompt import Prompt
+from rich.text import Text
+
 from cli_utils.predict import predict_game
+
+# Initialize Rich console
+console = Console()
 
 
 def display_menu():
-    """Display the main menu."""
-    print("\n" + "=" * 70)
-    print("NFL STATS & BETTING ANALYSIS")
-    print("=" * 70)
-    print("\n1. Extract Rankings")
-    print("2. Predict Game")
-    print("3. Exit")
-    print("\n" + "=" * 70)
+    """Display the main menu with rich formatting."""
+    console.print()
+
+    # Create header with football emoji
+    header = Text("🏈  NFL BETTING ANALYSIS TOOL  🏈", style="bold cyan", justify="center")
+
+    # Create menu options
+    menu_text = Text()
+    menu_text.append("\n1. ", style="bold yellow")
+    menu_text.append("Predict Game\n", style="white")
+    menu_text.append("2. ", style="bold yellow")
+    menu_text.append("Exit\n", style="white")
+
+    # Display in panel
+    console.print(Panel(menu_text, title=header, border_style="cyan", padding=(1, 2)))
 
 
 def main():
     """Main CLI entry point with interactive menu."""
+    # Clear screen and show welcome
+    console.clear()
+    console.print("[bold green]Welcome to NFL Betting Analysis Tool![/bold green]\n")
+    console.print("[dim]All data is automatically fetched when generating predictions.[/dim]\n")
+
     while True:
         display_menu()
-        choice = input("\nSelect option (1-3): ").strip()
+
+        # Get user choice with styled prompt
+        choice = Prompt.ask(
+            "\n[bold cyan]Select option[/bold cyan]",
+            choices=["1", "2"],
+            default="1"
+        )
 
         if choice == "1":
-            print("\n")
-            extract_rankings()
-            input("\nPress Enter to continue...")
+            predict_game()
+            Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
 
         elif choice == "2":
-            predict_game()
-            input("\nPress Enter to continue...")
-
-        elif choice == "3":
-            print("\nExiting... Goodbye!")
+            console.print("\n[bold green]Exiting... Good luck with your bets! 🎰[/bold green]\n")
             break
-
-        else:
-            print("\n⚠️  Invalid option. Please select 1, 2, or 3.")
-            input("\nPress Enter to continue...")
 
 
 if __name__ == "__main__":

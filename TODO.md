@@ -6,3 +6,4 @@
 [ ] - Fetch Results
 [ ] - Prompt Enhancement
 [ ] - Improve Injury Report
+[x] - Avoid same day scrapping and predicting with same values

@@ -34,8 +34,10 @@ def extract_team_profile(team_name: str, pfr_abbr: str):
     print(f"\nExtracting profile data for {team_name}...")
     print(f"URL: {url}")
 
-    # Create profiles directory if it doesn't exist
-    os.makedirs(DATA_PROFILES_DIR, exist_ok=True)
+    # Create team-specific directory
+    team_folder = team_name.lower().replace(" ", "_")
+    team_dir = os.path.join(DATA_PROFILES_DIR, team_folder)
+    os.makedirs(team_dir, exist_ok=True)
 
     extracted_data = {}
     extraction_failed = False
@@ -131,9 +133,9 @@ def extract_team_profile(team_name: str, pfr_abbr: str):
                     # Build result
                     result = table_data
 
-                    # Save to file
-                    filename = f"{pfr_abbr}_{output_name}.json"
-                    filepath = os.path.join(DATA_PROFILES_DIR, filename)
+                    # Save to file in team-specific folder
+                    filename = f"{output_name}.json"
+                    filepath = os.path.join(team_dir, filename)
 
                     with open(filepath, "w", encoding="utf-8") as f:
                         json.dump(result, f, indent=2, ensure_ascii=False)

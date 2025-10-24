@@ -4,7 +4,9 @@ Extracts all ranking tables from Pro-Football-Reference.com and converts to JSON
 """
 
 import json
+import os
 import re
+from datetime import date
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -18,6 +20,38 @@ from constants import (
     PFR_RATE_LIMIT_PERIOD,
     RANKING_TABLES,
 )
+
+# Metadata file path
+RANKINGS_METADATA_FILE = os.path.join(DATA_RANKINGS_DIR, ".metadata.json")
+
+
+def load_rankings_metadata() -> dict:
+    """Load rankings metadata file tracking when rankings were last scraped."""
+    if os.path.exists(RANKINGS_METADATA_FILE):
+        try:
+            with open(RANKINGS_METADATA_FILE) as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Warning: Could not load rankings metadata file: {str(e)}")
+            return {}
+    return {}
+
+
+def save_rankings_metadata(metadata: dict):
+    """Save rankings metadata file."""
+    os.makedirs(DATA_RANKINGS_DIR, exist_ok=True)
+    try:
+        with open(RANKINGS_METADATA_FILE, "w") as f:
+            json.dump(metadata, f, indent=2)
+    except Exception as e:
+        print(f"Warning: Could not save rankings metadata file: {str(e)}")
+
+
+def was_rankings_scraped_today() -> bool:
+    """Check if rankings were scraped today."""
+    metadata = load_rankings_metadata()
+    today = date.today().isoformat()
+    return metadata.get("last_scraped") == today
 
 
 def table_name_to_filename(table_name: str) -> str:
@@ -111,6 +145,8 @@ def extract_all_rankings(url: str = NFL_STATS_URL, output_dir: str = DATA_RANKIN
     """
     Extract all ranking tables from URL in one page load.
 
+    Uses metadata tracking to avoid scraping multiple times per day.
+
     Args:
         url: URL to scrape from
         output_dir: Directory where JSON files will be saved
@@ -118,8 +154,18 @@ def extract_all_rankings(url: str = NFL_STATS_URL, output_dir: str = DATA_RANKIN
     Returns:
         Dictionary with extraction results (success/failure counts)
     """
-    print(f"Navigating to {url}...")
-    results = {"success": [], "failed": []}
+    # Check if rankings were already scraped today
+    if was_rankings_scraped_today():
+        print(f"\n{'='*70}")
+        print("RANKINGS ALREADY EXTRACTED TODAY")
+        print(f"{'='*70}")
+        print("✓ Using existing ranking data from today")
+        print("  Rankings are refreshed once per day to respect rate limits")
+        print(f"{'='*70}\n")
+        return {"success": [], "failed": [], "skipped": True}
+
+    print(f"Fetching fresh ranking data from {url}...")
+    results = {"success": [], "failed": [], "skipped": False}
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -141,6 +187,11 @@ def extract_all_rankings(url: str = NFL_STATS_URL, output_dir: str = DATA_RANKIN
                 pbar.update(1)
 
         browser.close()
+
+    # Update metadata with today's date
+    if results["success"]:
+        metadata = {"last_scraped": date.today().isoformat()}
+        save_rankings_metadata(metadata)
 
     # Print summary
     print(f"\n{'='*70}")
