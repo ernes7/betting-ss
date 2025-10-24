@@ -22,3 +22,15 @@
 [ ] - CLI
 [ ] - Fetch Results
 [ ] - NBA Prompt
+
+
+## Analytics
+- each prediction file, should have the odds of that parlay input by user for now ( this will help calculate profits )
+
+
+### Future Strategies
+
+1. Stake by confidence
+Modify CLI to ask for total money in a game
+App provides how much money into each parlay
+
