@@ -11,7 +11,7 @@ from typing import Any
 import anthropic
 from dotenv import load_dotenv
 
-from prompt import build_prediction_prompt
+from nfl.prompt import build_prediction_prompt
 
 # Load environment variables
 load_dotenv()
@@ -27,12 +27,12 @@ def load_json_file(filepath: str) -> dict[str, Any] | None:
 
 
 def load_ranking_tables() -> dict[str, dict]:
-    """Load all ranking tables from data/rankings/."""
-    rankings_dir = Path("data/rankings")
+    """Load all ranking tables from nfl/data/rankings/."""
+    rankings_dir = Path("nfl/data/rankings")
     rankings = {}
 
     if not rankings_dir.exists():
-        print("Warning: data/rankings/ folder not found")
+        print("Warning: nfl/data/rankings/ folder not found")
         return rankings
 
     for json_file in rankings_dir.glob("*.json"):
@@ -43,10 +43,10 @@ def load_ranking_tables() -> dict[str, dict]:
 
 
 def load_team_profile(team_name: str) -> dict[str, Any] | None:
-    """Load a team's profile from data/profiles/."""
+    """Load a team's profile from nfl/data/profiles/."""
     # Normalize team name to filename (lowercase, underscores)
     filename = team_name.lower().replace(" ", "_") + ".json"
-    filepath = f"data/profiles/{filename}"
+    filepath = f"nfl/data/profiles/{filename}"
     return load_json_file(filepath)
 
 

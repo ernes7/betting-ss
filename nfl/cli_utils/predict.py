@@ -10,17 +10,17 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from extract_profiles import extract_team_profile
-from extract_rankings import extract_all_rankings, was_rankings_scraped_today
-from predict import generate_parlays, load_ranking_tables
-from teams import TEAMS, TEAM_NAMES
+from nfl.extract_profiles import extract_team_profile
+from nfl.extract_rankings import extract_all_rankings, was_rankings_scraped_today
+from nfl.predict import generate_parlays, load_ranking_tables
+from nfl.teams import TEAMS, TEAM_NAMES
 
 # Initialize Rich console
 console = Console()
 
 # Metadata file paths
-METADATA_FILE = "data/profiles/.metadata.json"
-PREDICTIONS_METADATA_FILE = "predictions/.metadata.json"
+METADATA_FILE = "nfl/data/profiles/.metadata.json"
+PREDICTIONS_METADATA_FILE = "nfl/predictions/.metadata.json"
 
 
 def load_metadata() -> dict:
@@ -97,7 +97,7 @@ def was_game_predicted_today(week: int, team_a: str, team_b: str, home_team: str
 
     # Build filepath
     filename = f"{team_a_abbr}_{team_b_abbr}.md" if home_team == team_a else f"{team_b_abbr}_{team_a_abbr}.md"
-    filepath = os.path.join("predictions", f"w{week}", filename)
+    filepath = os.path.join("nfl/predictions", f"w{week}", filename)
 
     return was_predicted, filepath
 
@@ -133,7 +133,7 @@ def save_prediction_to_markdown(
 ):
     """Save prediction to markdown file."""
     # Create predictions directory structure
-    predictions_dir = "predictions"
+    predictions_dir = "nfl/predictions"
     week_dir = os.path.join(predictions_dir, f"w{week}")
     os.makedirs(week_dir, exist_ok=True)
 
@@ -179,7 +179,7 @@ def load_team_profiles(team_a: str, team_b: str) -> tuple[dict, dict]:
     for team_name in [team_a, team_b]:
         # Normalize team name to folder name
         team_folder = team_name.lower().replace(" ", "_")
-        profile_dir = os.path.join("data/profiles", team_folder)
+        profile_dir = os.path.join("nfl/data/profiles", team_folder)
 
         # Check if we already scraped this team today
         if was_scraped_today(team_folder, metadata):

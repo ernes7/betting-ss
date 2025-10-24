@@ -6,7 +6,7 @@ import os
 from playwright.sync_api import sync_playwright
 from ratelimit import limits, sleep_and_retry
 
-from constants import (
+from nfl.constants import (
     CURRENT_YEAR,
     DATA_PROFILES_DIR,
     PFR_RATE_LIMIT_CALLS,

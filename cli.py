@@ -8,7 +8,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.text import Text
 
-from cli_utils.predict import predict_game
+from nfl.cli_utils.predict import predict_game
 
 # Initialize Rich console
 console = Console()

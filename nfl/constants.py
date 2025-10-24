@@ -1,11 +1,16 @@
 """Configuration constants for NFL stats scraping and analysis."""
 
+from global_constants import (
+    SPORTS_REFERENCE_RATE_LIMIT_CALLS,
+    SPORTS_REFERENCE_RATE_LIMIT_PERIOD,
+)
+
 # Current NFL season year
 CURRENT_YEAR = 2025
 
-# Rate limiting for Pro-Football-Reference (to avoid HTTP 429 errors)
-PFR_RATE_LIMIT_CALLS = 1  # Number of calls allowed
-PFR_RATE_LIMIT_PERIOD = 5  # Time period in seconds
+# Rate limiting for Pro-Football-Reference (uses global Sports-Reference rate limits)
+PFR_RATE_LIMIT_CALLS = SPORTS_REFERENCE_RATE_LIMIT_CALLS
+PFR_RATE_LIMIT_PERIOD = SPORTS_REFERENCE_RATE_LIMIT_PERIOD
 
 # URLs
 NFL_STATS_URL = f"https://www.pro-football-reference.com/years/{CURRENT_YEAR}/"
@@ -35,5 +40,5 @@ TEAM_PROFILE_TABLES = {
 }
 
 # Data folder paths
-DATA_RANKINGS_DIR = "data/rankings"
-DATA_PROFILES_DIR = "data/profiles"
+DATA_RANKINGS_DIR = "nfl/data/rankings"
+DATA_PROFILES_DIR = "nfl/data/profiles"

@@ -13,7 +13,7 @@ from playwright.sync_api import sync_playwright
 from ratelimit import limits, sleep_and_retry
 from tqdm import tqdm
 
-from constants import (
+from nfl.constants import (
     DATA_RANKINGS_DIR,
     NFL_STATS_URL,
     PFR_RATE_LIMIT_CALLS,

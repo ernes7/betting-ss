@@ -1,9 +1,16 @@
 [x] - Extract Rankings
 [x] - CLI
 [x] - Individual Teams Pages
-[ ] - Odds Pages
+[ ] - Odds Pages (do we really need this?)
 [x] - Document Predictions
 [ ] - Fetch Results
-[ ] - Prompt Enhancement
+[ ] - Create Analysis game by game (Predictions vs Results)
+[ ] - Prompt Enhancement based on analysis ( low priority )
 [ ] - Improve Injury Report
 [x] - Avoid same day scrapping and predicting with same values
+
+
+[ ] - Refactor/Create foundation for other sports
+
+[ ] - NHL
+[ ] - NBA
