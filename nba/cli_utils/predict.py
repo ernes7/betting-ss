@@ -10,10 +10,14 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from nba.extract_profiles import extract_team_profile
-from nba.extract_rankings import extract_all_rankings, was_rankings_scraped_today
-from nba.predict import generate_parlays, load_ranking_tables
+# Import sport factory for OOP architecture
+from shared.factory import SportFactory
+import shared.register_sports  # Auto-register sports
+
 from nba.teams import TEAMS, TEAM_NAMES
+
+# Create NBA sport instance
+nba_sport = SportFactory.create("nba")
 
 # Initialize Rich console
 console = Console()
@@ -199,9 +203,9 @@ def load_team_profiles(team_a: str, team_b: str) -> tuple[dict, dict]:
                 profiles[team_name] = None
                 continue
 
-            # Extract profile from Basketball-Reference
+            # Extract profile from Basketball-Reference using OOP architecture
             try:
-                extract_team_profile(team_name, pbr_abbr)
+                nba_sport.scraper.extract_team_profile(team_name)
                 console.print(f"  [green]✓ Successfully extracted profile for {team_name}[/green]")
 
                 # Update metadata with today's date
@@ -320,20 +324,20 @@ def predict_game():
             console.print(f"[yellow]⚠ Could not load existing prediction: {str(e)}[/yellow]")
             console.print("[cyan]Generating new prediction...[/cyan]\n")
 
-    # Auto-fetch rankings if needed
-    if not was_rankings_scraped_today():
+    # Auto-fetch rankings if needed using OOP architecture
+    if not nba_sport.scraper.rankings_metadata_mgr.was_scraped_today():
         console.print()
         console.print("[cyan]📊 Fetching fresh rankings data...[/cyan]")
-        extract_all_rankings()
+        nba_sport.scraper.extract_rankings()
 
-    # Load ranking data with spinner
+    # Load ranking data with spinner using OOP architecture
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         console=console
     ) as progress:
         progress.add_task(description="Loading ranking data...", total=None)
-        rankings = load_ranking_tables()
+        rankings = nba_sport.predictor.load_ranking_tables()
 
     if not rankings:
         console.print("[bold red]✗ Error:[/bold red] Could not load ranking data. Please check your internet connection.")
@@ -373,7 +377,7 @@ def predict_game():
         console=console
     ) as progress:
         progress.add_task(description="Generating AI parlays with 80%+ confidence...", total=None)
-        result = generate_parlays(team_a, team_b, home_team, rankings, profile_a, profile_b)
+        result = nba_sport.predictor.generate_parlays(team_a, team_b, home_team, rankings, profile_a, profile_b)
 
     # Display result with markdown rendering
     console.print()
