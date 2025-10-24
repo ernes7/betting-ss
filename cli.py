@@ -1,6 +1,6 @@
-"""NFL Stats CLI
+"""Multi-Sport Betting Analysis CLI
 
-Interactive menu-based interface for extracting NFL stats and making predictions.
+Interactive menu-based interface for generating betting predictions across multiple sports.
 """
 
 from rich.console import Console
@@ -8,24 +8,73 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.text import Text
 
-from nfl.cli_utils.predict import predict_game
+from nfl.cli_utils.predict import predict_game as nfl_predict_game
+from nba.cli_utils.predict import predict_game as nba_predict_game
 
 # Initialize Rich console
 console = Console()
 
+# Sport configurations
+SPORTS = {
+    "1": {
+        "name": "NFL",
+        "emoji": "🏈",
+        "predict_fn": nfl_predict_game,
+    },
+    "2": {
+        "name": "NBA",
+        "emoji": "🏀",
+        "predict_fn": nba_predict_game,
+    },
+}
 
-def display_menu():
-    """Display the main menu with rich formatting."""
+
+def select_sport():
+    """Display sport selection menu and return selected sport config."""
     console.print()
 
-    # Create header with football emoji
-    header = Text("🏈  NFL BETTING ANALYSIS TOOL  🏈", style="bold cyan", justify="center")
+    # Create sport selection panel
+    sport_text = Text()
+    sport_text.append("\nSelect Sport:\n\n", style="bold white")
+
+    for key, sport in SPORTS.items():
+        sport_text.append(f"{key}. ", style="bold yellow")
+        sport_text.append(f"{sport['emoji']}  {sport['name']}\n", style="white")
+
+    console.print(Panel(
+        sport_text,
+        title=Text("🎯 SPORTS BETTING ANALYSIS 🎯", style="bold cyan", justify="center"),
+        border_style="cyan",
+        padding=(1, 2)
+    ))
+
+    choice = Prompt.ask(
+        "\n[bold cyan]Select sport[/bold cyan]",
+        choices=list(SPORTS.keys()),
+        default="1"
+    )
+
+    return SPORTS[choice]
+
+
+def display_menu(sport_config):
+    """Display the main menu with sport-specific formatting."""
+    console.print()
+
+    # Create header with sport emoji
+    header = Text(
+        f"{sport_config['emoji']}  {sport_config['name'].upper()} BETTING ANALYSIS  {sport_config['emoji']}",
+        style="bold cyan",
+        justify="center"
+    )
 
     # Create menu options
     menu_text = Text()
     menu_text.append("\n1. ", style="bold yellow")
     menu_text.append("Predict Game\n", style="white")
     menu_text.append("2. ", style="bold yellow")
+    menu_text.append("Change Sport\n", style="white")
+    menu_text.append("3. ", style="bold yellow")
     menu_text.append("Exit\n", style="white")
 
     # Display in panel
@@ -36,24 +85,32 @@ def main():
     """Main CLI entry point with interactive menu."""
     # Clear screen and show welcome
     console.clear()
-    console.print("[bold green]Welcome to NFL Betting Analysis Tool![/bold green]\n")
-    console.print("[dim]All data is automatically fetched when generating predictions.[/dim]\n")
+    console.print("[bold green]Welcome to Multi-Sport Betting Analysis Tool![/bold green]\n")
+    console.print("[dim]AI-powered predictions for NFL and NBA[/dim]\n")
+
+    # Select initial sport
+    current_sport = select_sport()
 
     while True:
-        display_menu()
+        display_menu(current_sport)
 
         # Get user choice with styled prompt
         choice = Prompt.ask(
             "\n[bold cyan]Select option[/bold cyan]",
-            choices=["1", "2"],
+            choices=["1", "2", "3"],
             default="1"
         )
 
         if choice == "1":
-            predict_game()
+            # Call sport-specific predict function
+            current_sport["predict_fn"]()
             Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
 
         elif choice == "2":
+            # Change sport
+            current_sport = select_sport()
+
+        elif choice == "3":
             console.print("\n[bold green]Exiting... Good luck with your bets! 🎰[/bold green]\n")
             break
 

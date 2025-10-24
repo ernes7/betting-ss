@@ -12,87 +12,77 @@
   ],
   "data": [
     {
-      "team_name": "Toronto Raptors\u00a0(1)",
+      "team_name": "Toronto Raptors (1)",
       "wins": "1",
       "losses": "0",
       "win_loss_pct": "1.000",
-      "gb": "\u2014",
+      "gb": "—",
       "pts_per_g": "138.0",
       "opp_pts_per_g": "118.0",
       "srs": "0.00"
     },
     {
-      "team_name": "Chicago Bulls\u00a0(1)",
+      "team_name": "Chicago Bulls (1)",
       "wins": "1",
       "losses": "0",
       "win_loss_pct": "1.000",
-      "gb": "\u2014",
+      "gb": "—",
       "pts_per_g": "115.0",
       "opp_pts_per_g": "111.0",
       "srs": "0.00"
     },
     {
-      "team_name": "Charlotte Hornets\u00a0(1)",
+      "team_name": "Charlotte Hornets (1)",
       "wins": "1",
       "losses": "0",
       "win_loss_pct": "1.000",
-      "gb": "\u2014",
+      "gb": "—",
       "pts_per_g": "136.0",
       "opp_pts_per_g": "117.0",
       "srs": "0.00"
     },
     {
-      "team_name": "Philadelphia 76ers\u00a0(1)",
+      "team_name": "Philadelphia 76ers (1)",
       "wins": "1",
       "losses": "0",
       "win_loss_pct": "1.000",
-      "gb": "\u2014",
+      "gb": "—",
       "pts_per_g": "117.0",
       "opp_pts_per_g": "116.0",
       "srs": "0.00"
     },
     {
-      "team_name": "Orlando Magic\u00a0(1)",
+      "team_name": "Orlando Magic (1)",
       "wins": "1",
       "losses": "0",
       "win_loss_pct": "1.000",
-      "gb": "\u2014",
+      "gb": "—",
       "pts_per_g": "125.0",
       "opp_pts_per_g": "121.0",
       "srs": "0.00"
     },
     {
-      "team_name": "New York Knicks\u00a0(1)",
+      "team_name": "New York Knicks (1)",
       "wins": "1",
       "losses": "0",
       "win_loss_pct": "1.000",
-      "gb": "\u2014",
+      "gb": "—",
       "pts_per_g": "119.0",
       "opp_pts_per_g": "111.0",
       "srs": "0.00"
     },
     {
-      "team_name": "Milwaukee Bucks\u00a0(1)",
+      "team_name": "Milwaukee Bucks (1)",
       "wins": "1",
       "losses": "0",
       "win_loss_pct": "1.000",
-      "gb": "\u2014",
+      "gb": "—",
       "pts_per_g": "133.0",
       "opp_pts_per_g": "120.0",
       "srs": "0.00"
     },
     {
-      "team_name": "Indiana Pacers\u00a0(8)",
-      "wins": "0",
-      "losses": "0",
-      "win_loss_pct": "",
-      "gb": "0.5",
-      "pts_per_g": "",
-      "opp_pts_per_g": "",
-      "srs": ""
-    },
-    {
-      "team_name": "Miami Heat\u00a0(8)",
+      "team_name": "Miami Heat (8)",
       "wins": "0",
       "losses": "1",
       "win_loss_pct": ".000",
@@ -102,7 +92,7 @@
       "srs": "0.00"
     },
     {
-      "team_name": "Washington Wizards\u00a0(8)",
+      "team_name": "Washington Wizards (8)",
       "wins": "0",
       "losses": "1",
       "win_loss_pct": ".000",
@@ -112,7 +102,7 @@
       "srs": "0.00"
     },
     {
-      "team_name": "Atlanta Hawks\u00a0(8)",
+      "team_name": "Atlanta Hawks (8)",
       "wins": "0",
       "losses": "1",
       "win_loss_pct": ".000",
@@ -122,7 +112,17 @@
       "srs": "0.00"
     },
     {
-      "team_name": "Boston Celtics\u00a0(8)",
+      "team_name": "Indiana Pacers (8)",
+      "wins": "0",
+      "losses": "1",
+      "win_loss_pct": ".000",
+      "gb": "1.0",
+      "pts_per_g": "135.0",
+      "opp_pts_per_g": "141.0",
+      "srs": "-2.50"
+    },
+    {
+      "team_name": "Boston Celtics (8)",
       "wins": "0",
       "losses": "1",
       "win_loss_pct": ".000",
@@ -132,7 +132,7 @@
       "srs": "0.00"
     },
     {
-      "team_name": "Brooklyn Nets\u00a0(8)",
+      "team_name": "Brooklyn Nets (8)",
       "wins": "0",
       "losses": "1",
       "win_loss_pct": ".000",
@@ -142,23 +142,23 @@
       "srs": "0.00"
     },
     {
-      "team_name": "Detroit Pistons\u00a0(8)",
-      "wins": "0",
-      "losses": "1",
-      "win_loss_pct": ".000",
-      "gb": "1.0",
-      "pts_per_g": "111.0",
-      "opp_pts_per_g": "115.0",
-      "srs": "0.00"
-    },
-    {
-      "team_name": "Cleveland Cavaliers\u00a0(8)",
+      "team_name": "Cleveland Cavaliers (8)",
       "wins": "0",
       "losses": "1",
       "win_loss_pct": ".000",
       "gb": "1.0",
       "pts_per_g": "111.0",
       "opp_pts_per_g": "119.0",
+      "srs": "0.00"
+    },
+    {
+      "team_name": "Detroit Pistons (8)",
+      "wins": "0",
+      "losses": "1",
+      "win_loss_pct": ".000",
+      "gb": "1.0",
+      "pts_per_g": "111.0",
+      "opp_pts_per_g": "115.0",
       "srs": "0.00"
     }
   ]

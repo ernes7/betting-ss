@@ -52,7 +52,7 @@ class Scraper:
             print(f"\n{'=' * 70}")
             print("RANKINGS ALREADY EXTRACTED TODAY")
             print(f"{'=' * 70}")
-            print("✓ Using existing ranking data from today")
+            print("Using existing ranking data from today")
             print("  Rankings are refreshed once per day to respect rate limits")
             print(f"{'=' * 70}\n")
             return {"success": [], "failed": [], "skipped": True}
@@ -83,10 +83,10 @@ class Scraper:
                         FileManager.save_json(output_path, table_data)
 
                         results["success"].append(output_name)
-                        pbar.write(f"  ✓ {output_name}: {len(table_data['data'])} rows")
+                        pbar.write(f"  [OK] {output_name}: {len(table_data['data'])} rows")
                     else:
                         results["failed"].append(output_name)
-                        pbar.write(f"  ⚠️  Table '{table_id}' not found")
+                        pbar.write(f"  [WARN] Table '{table_id}' not found")
 
                     pbar.update(1)
 
@@ -99,10 +99,10 @@ class Scraper:
         print("EXTRACTION COMPLETE")
         print(f"{'=' * 70}")
         print(
-            f"✓ Success: {len(results['success'])}/{len(self.config.ranking_tables)} tables"
+            f"Success: {len(results['success'])}/{len(self.config.ranking_tables)} tables"
         )
         if results["failed"]:
-            print(f"✗ Failed: {', '.join(results['failed'])}")
+            print(f"Failed: {', '.join(results['failed'])}")
         print(f"{'=' * 70}\n")
 
         return results
@@ -168,10 +168,10 @@ class Scraper:
 
                 # Check for rate limiting or errors
                 if response and response.status == 429:
-                    print("  ✗ Rate limited (HTTP 429) - cannot extract data")
+                    print("  [ERROR] Rate limited (HTTP 429) - cannot extract data")
                     return {}
                 elif response and response.status != 200:
-                    print(f"  ✗ HTTP {response.status} - cannot extract data")
+                    print(f"  [ERROR] HTTP {response.status} - cannot extract data")
                     return {}
 
                 # Extract each table
@@ -191,7 +191,7 @@ class Scraper:
                         FileManager.save_json(filepath, table_data)
 
                         extracted_data[output_name] = table_data
-                        print(f"    ✓ Saved to {filepath}")
+                        print(f"    [OK] Saved to {filepath}")
                     else:
                         print(
                             f"    Warning: Table #{actual_table_id} not found, skipping..."
