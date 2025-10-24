@@ -1,3 +1,4 @@
+ ** NFL **
 [x] - Extract Rankings
 [x] - CLI
 [x] - Individual Teams Pages
@@ -10,7 +11,14 @@
 [x] - Avoid same day scrapping and predicting with same values
 
 
-[ ] - Refactor/Create foundation for other sports
+[ ] - Refactor/Create foundation for other sports, use class inheritance, more OOP ( plug and play system )
 
+
+** NHL **
 [ ] - NHL
-[ ] - NBA
+
+** NBA **
+[x] - Extract Rankings and Profiles
+[ ] - CLI
+[ ] - Fetch Results
+[ ] - NBA Prompt
