@@ -13,24 +13,27 @@ BBR_RATE_LIMIT_CALLS = SPORTS_REFERENCE_RATE_LIMIT_CALLS
 BBR_RATE_LIMIT_PERIOD = SPORTS_REFERENCE_RATE_LIMIT_PERIOD
 
 # URLs
-# TODO: Add specific Basketball-Reference URLs
 NBA_STATS_URL = f"https://www.basketball-reference.com/leagues/NBA_{CURRENT_YEAR}.html"
+NBA_TEAM_URL_PATTERN = f"https://www.basketball-reference.com/teams/{{pbr_abbr}}/{CURRENT_YEAR}.html"
 
 # Ranking tables to extract (table_name: html_table_id)
-# TODO: Add specific table IDs after inspecting Basketball-Reference
 RANKING_TABLES = {
-    # "team_stats": "team_stats",
-    # "advanced_stats": "advanced",
-    # "eastern_standings": "confs_standings_E",
-    # "western_standings": "confs_standings_W",
+    "eastern_conference": "confs_standings_E",
+    "western_conference": "confs_standings_W",
+    "per_game_stats": "per_game-team",
+    "total_stats": "totals-team",
+    "advanced_stats": "advanced-team",
+    "shooting_stats": "shooting-team",
 }
 
 # Team profile tables to extract
-# TODO: Add specific table IDs after inspecting team pages
 TEAM_PROFILE_TABLES = {
-    # "team_stats": "team_stats",
-    # "schedule_results": "games",
-    # "roster": "roster",
+    "injuries": "injuries",
+    "per_game_stats": "per_game_stats",
+    "totals_stats": "totals_stats",
+    "team_and_opponent": "team_and_opponent",
+    "adj_shooting": "adj_shooting",
+    "shooting": "shooting",
 }
 
 # Data folder paths

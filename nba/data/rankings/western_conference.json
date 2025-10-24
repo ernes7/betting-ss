@@ -1,0 +1,165 @@
+{
+  "table_name": "Table",
+  "headers": [
+    "team_name",
+    "wins",
+    "losses",
+    "win_loss_pct",
+    "gb",
+    "pts_per_g",
+    "opp_pts_per_g",
+    "srs"
+  ],
+  "data": [
+    {
+      "team_name": "Oklahoma City Thunder\u00a0(1)",
+      "wins": "1",
+      "losses": "0",
+      "win_loss_pct": "1.000",
+      "gb": "\u2014",
+      "pts_per_g": "125.0",
+      "opp_pts_per_g": "124.0",
+      "srs": "0.00"
+    },
+    {
+      "team_name": "Utah Jazz\u00a0(1)",
+      "wins": "1",
+      "losses": "0",
+      "win_loss_pct": "1.000",
+      "gb": "\u2014",
+      "pts_per_g": "129.0",
+      "opp_pts_per_g": "108.0",
+      "srs": "0.00"
+    },
+    {
+      "team_name": "San Antonio Spurs\u00a0(1)",
+      "wins": "1",
+      "losses": "0",
+      "win_loss_pct": "1.000",
+      "gb": "\u2014",
+      "pts_per_g": "125.0",
+      "opp_pts_per_g": "92.0",
+      "srs": "0.00"
+    },
+    {
+      "team_name": "Phoenix Suns\u00a0(1)",
+      "wins": "1",
+      "losses": "0",
+      "win_loss_pct": "1.000",
+      "gb": "\u2014",
+      "pts_per_g": "120.0",
+      "opp_pts_per_g": "116.0",
+      "srs": "0.00"
+    },
+    {
+      "team_name": "Minnesota Timberwolves\u00a0(1)",
+      "wins": "1",
+      "losses": "0",
+      "win_loss_pct": "1.000",
+      "gb": "\u2014",
+      "pts_per_g": "118.0",
+      "opp_pts_per_g": "114.0",
+      "srs": "0.00"
+    },
+    {
+      "team_name": "Golden State Warriors\u00a0(1)",
+      "wins": "1",
+      "losses": "0",
+      "win_loss_pct": "1.000",
+      "gb": "\u2014",
+      "pts_per_g": "119.0",
+      "opp_pts_per_g": "109.0",
+      "srs": "0.00"
+    },
+    {
+      "team_name": "Memphis Grizzlies\u00a0(1)",
+      "wins": "1",
+      "losses": "0",
+      "win_loss_pct": "1.000",
+      "gb": "\u2014",
+      "pts_per_g": "128.0",
+      "opp_pts_per_g": "122.0",
+      "srs": "0.00"
+    },
+    {
+      "team_name": "Denver Nuggets\u00a0(8)",
+      "wins": "0",
+      "losses": "0",
+      "win_loss_pct": "",
+      "gb": "0.5",
+      "pts_per_g": "",
+      "opp_pts_per_g": "",
+      "srs": ""
+    },
+    {
+      "team_name": "Houston Rockets\u00a0(8)",
+      "wins": "0",
+      "losses": "1",
+      "win_loss_pct": ".000",
+      "gb": "1.0",
+      "pts_per_g": "124.0",
+      "opp_pts_per_g": "125.0",
+      "srs": "0.00"
+    },
+    {
+      "team_name": "Dallas Mavericks\u00a0(8)",
+      "wins": "0",
+      "losses": "1",
+      "win_loss_pct": ".000",
+      "gb": "1.0",
+      "pts_per_g": "92.0",
+      "opp_pts_per_g": "125.0",
+      "srs": "0.00"
+    },
+    {
+      "team_name": "New Orleans Pelicans\u00a0(8)",
+      "wins": "0",
+      "losses": "1",
+      "win_loss_pct": ".000",
+      "gb": "1.0",
+      "pts_per_g": "122.0",
+      "opp_pts_per_g": "128.0",
+      "srs": "0.00"
+    },
+    {
+      "team_name": "Portland Trail Blazers\u00a0(8)",
+      "wins": "0",
+      "losses": "1",
+      "win_loss_pct": ".000",
+      "gb": "1.0",
+      "pts_per_g": "114.0",
+      "opp_pts_per_g": "118.0",
+      "srs": "0.00"
+    },
+    {
+      "team_name": "Sacramento Kings\u00a0(8)",
+      "wins": "0",
+      "losses": "1",
+      "win_loss_pct": ".000",
+      "gb": "1.0",
+      "pts_per_g": "116.0",
+      "opp_pts_per_g": "120.0",
+      "srs": "0.00"
+    },
+    {
+      "team_name": "Los Angeles Lakers\u00a0(8)",
+      "wins": "0",
+      "losses": "1",
+      "win_loss_pct": ".000",
+      "gb": "1.0",
+      "pts_per_g": "109.0",
+      "opp_pts_per_g": "119.0",
+      "srs": "0.00"
+    },
+    {
+      "team_name": "Los Angeles Clippers\u00a0(8)",
+      "wins": "0",
+      "losses": "1",
+      "win_loss_pct": ".000",
+      "gb": "1.0",
+      "pts_per_g": "108.0",
+      "opp_pts_per_g": "129.0",
+      "srs": "0.00"
+    }
+  ]
+}
