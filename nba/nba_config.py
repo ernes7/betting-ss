@@ -56,6 +56,18 @@ class NBAConfig(SportConfig):
         return DATA_PROFILES_DIR
 
     @property
+    def predictions_dir(self) -> str:
+        return "nba/predictions"
+
+    @property
+    def results_dir(self) -> str:
+        return "nba/results"
+
+    @property
+    def analysis_dir(self) -> str:
+        return "nba/analysis"
+
+    @property
     def prompt_components(self) -> NBAPromptComponents:
         return NBAPromptComponents()
 
@@ -69,3 +81,20 @@ class NBAConfig(SportConfig):
             Complete URL for the team's page
         """
         return NBA_TEAM_URL_PATTERN.format(pbr_abbr=team_abbr)
+
+    def build_boxscore_url(self, game_date: str, home_team_abbr: str) -> str:
+        """Build NBA boxscore URL using Basketball-Reference pattern.
+
+        Args:
+            game_date: Game date in YYYY-MM-DD format
+            home_team_abbr: Basketball-Reference home team abbreviation (e.g., "TOR")
+
+        Returns:
+            Complete URL for the game's boxscore page
+
+        Example:
+            build_boxscore_url("2025-10-24", "TOR")
+            -> "https://www.basketball-reference.com/boxscores/202510240TOR.html"
+        """
+        date_str = game_date.replace("-", "")  # "2025-10-24" -> "20251024"
+        return f"https://www.basketball-reference.com/boxscores/{date_str}0{home_team_abbr}.html"

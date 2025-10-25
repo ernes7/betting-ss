@@ -6,6 +6,9 @@ class NBAPromptComponents:
 
     sport_name = "NBA"
 
+    # Parlay configuration (NBA wants exactly 3 legs, not 3-4 range)
+    parlay_legs = "3"  # Exactly 3 legs per parlay (default is "3-4")
+
     bet_types_list = """  * Player points O/U (e.g., "LeBron James Over 25.5 points")
   * Player rebounds O/U (e.g., "Anthony Davis Over 10.5 rebounds")
   * Player assists O/U (e.g., "Chris Paul Over 8.5 assists")

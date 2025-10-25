@@ -71,6 +71,24 @@ class SportConfig(ABC):
 
     @property
     @abstractmethod
+    def predictions_dir(self) -> str:
+        """Return directory path for predictions."""
+        pass
+
+    @property
+    @abstractmethod
+    def results_dir(self) -> str:
+        """Return directory path for results."""
+        pass
+
+    @property
+    @abstractmethod
+    def analysis_dir(self) -> str:
+        """Return directory path for analysis (future use)."""
+        pass
+
+    @property
+    @abstractmethod
     def prompt_components(self) -> Any:
         """Return sport-specific prompt components object."""
         pass
@@ -84,6 +102,19 @@ class SportConfig(ABC):
 
         Returns:
             Complete URL for the team's page
+        """
+        pass
+
+    @abstractmethod
+    def build_boxscore_url(self, game_date: str, home_team_abbr: str) -> str:
+        """Build URL for game boxscore/results page.
+
+        Args:
+            game_date: Game date in YYYY-MM-DD format
+            home_team_abbr: Home team abbreviation
+
+        Returns:
+            Complete URL for the game's boxscore page
         """
         pass
 

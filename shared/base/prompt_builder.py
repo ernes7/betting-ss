@@ -47,6 +47,24 @@ class PromptBuilder:
         if profile_b:
             data_context += f"\n\n{team_b.upper()} DETAILED PROFILE:\n{json.dumps(profile_b, indent=2)}"
 
+        # Get sport-specific parlay configuration (or use defaults)
+        parlay_legs = getattr(sport_components, 'parlay_legs', '3-4')
+        team_win_confidence = getattr(sport_components, 'team_win_confidence', '90')
+        safe_picks_confidence = getattr(sport_components, 'safe_picks_confidence', '97')
+
+        # Generate bet list format based on parlay_legs
+        # If exact number (e.g., "3"), show that many lines; if range (e.g., "3-4"), show max
+        if '-' in parlay_legs:
+            # Range like "3-4" - extract max value
+            max_legs = int(parlay_legs.split('-')[1])
+        else:
+            # Exact number like "3"
+            max_legs = int(parlay_legs)
+
+        # Create numbered bet list for format examples
+        bet_list_with_ml = "\n".join([f"{i}. [Bet with line - can include moneyline/spread or any prop type]" for i in range(1, max_legs + 1)])
+        bet_list_safe = "\n".join([f"{i}. [Safe bet - any prop type except moneyline/spread]" for i in range(1, max_legs + 1)])
+
         # Build the full prompt with shared template + injected components
         prompt = f"""You are an expert {sport_components.sport_name} betting analyst. Analyze this matchup and generate THREE single-game parlays:
 
@@ -54,13 +72,13 @@ MATCHUP: {team_a} @ {team_b}
 HOME TEAM: {home_team}
 
 OBJECTIVE:
-- Parlay 1: Assumes {team_a} wins (80%+ confidence)
-- Parlay 2: Assumes {team_b} wins (80%+ confidence)
-- Parlay 3: SAFE parlay - 95%+ confidence, NO moneylines, NO spread
+- Parlay 1: Assumes {team_a} wins ({team_win_confidence}%+ confidence)
+- Parlay 2: Assumes {team_b} wins ({team_win_confidence}%+ confidence)
+- Parlay 3: SAFE parlay - {safe_picks_confidence}%+ confidence, NO moneylines, NO spread
 
 REQUIREMENTS:
-- Parlays 1 & 2: Include 3-4 bets (can include ANY bet type including moneyline/spread)
-- Parlay 3: Include 3-4 VERY safe bets (NO moneyline, NO spread, but ANY other bet type allowed)
+- Parlays 1 & 2: Include {parlay_legs} bets (can include ANY bet type including moneyline/spread)
+- Parlay 3: Include {parlay_legs} VERY safe bets (NO moneyline, NO spread, but ANY other bet type allowed)
 - Parlay 3 should work regardless of who wins
 - ALL bet types available on Hard Rock (use any combination):
   * Moneyline (Parlays 1 & 2 only)
@@ -83,32 +101,23 @@ Generate exactly this format:
 **Confidence**: [percentage]%
 
 **Bets:**
-1. [Bet with line - can include moneyline/spread or any prop type]
-2. [Bet with line - can include moneyline/spread or any prop type]
-3. [Bet with line - can include moneyline/spread or any prop type]
-4. [Bet with line - can include moneyline/spread or any prop type]
+{bet_list_with_ml}
 
-**Reasoning**: [2-3 sentences on why this parlay has 75%+ confidence based on the provided stats]
+**Reasoning**: [2-3 sentences on why this parlay has {team_win_confidence}%+ confidence based on the provided stats]
 
 ## Parlay 2: {team_b} Wins
 **Confidence**: [percentage]%
 
 **Bets:**
-1. [Bet with line - can include moneyline/spread or any prop type]
-2. [Bet with line - can include moneyline/spread or any prop type]
-3. [Bet with line - can include moneyline/spread or any prop type]
-4. [Bet with line - can include moneyline/spread or any prop type]
+{bet_list_with_ml}
 
-**Reasoning**: [2-3 sentences on why this parlay has 75%+ confidence based on the provided stats]
+**Reasoning**: [2-3 sentences on why this parlay has {team_win_confidence}%+ confidence based on the provided stats]
 
 ## Parlay 3: Safe Picks (No Winner Required)
-**Confidence**: 90%+
+**Confidence**: {safe_picks_confidence}%+
 
 **Bets:**
-1. [Safe bet - any prop type except moneyline/spread]
-2. [Safe bet - any prop type except moneyline/spread]
-3. [Safe bet - any prop type except moneyline/spread]
-4. [Safe bet - any prop type except moneyline/spread]
+{bet_list_safe}
 
 **Reasoning**: [2-3 sentences on why these are extremely safe bets that should hit regardless of game outcome. Focus on consistent producers with conservative lines based on their season averages from the stats provided.]"""
 

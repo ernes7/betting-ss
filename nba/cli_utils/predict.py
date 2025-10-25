@@ -56,11 +56,35 @@ def was_scraped_today(team_folder: str, metadata: dict) -> bool:
 
 
 def load_predictions_metadata() -> dict:
-    """Load predictions metadata file tracking when games were predicted."""
+    """Load predictions metadata file tracking when games were predicted.
+
+    Automatically migrates old format (string) to new format (dict) if needed.
+    """
     if os.path.exists(PREDICTIONS_METADATA_FILE):
         try:
             with open(PREDICTIONS_METADATA_FILE) as f:
-                return json.load(f)
+                metadata = json.load(f)
+
+            # Migrate old format to new format
+            migrated = False
+            for game_key, value in metadata.items():
+                if isinstance(value, str):  # Old format: just date string
+                    metadata[game_key] = {
+                        "last_predicted": value,
+                        "results_fetched": False,
+                        "game_date": None,  # Can't recover from old format
+                        "teams": None,
+                        "home_team": None,
+                        "home_team_abbr": None
+                    }
+                    migrated = True
+
+            # Save migrated version
+            if migrated:
+                save_predictions_metadata(metadata)
+                console.print("[dim]Migrated predictions metadata to new format[/dim]")
+
+            return metadata
         except Exception as e:
             console.print(f"[yellow]Warning: Could not load predictions metadata: {str(e)}[/yellow]")
             return {}
@@ -134,6 +158,8 @@ def save_prediction_to_markdown(
     team_b: str,
     home_team: str,
     prediction_text: str,
+    cost: float = 0.0,
+    model: str = "unknown",
 ):
     """Save prediction to markdown file."""
     # Create predictions directory structure
@@ -159,10 +185,22 @@ def save_prediction_to_markdown(
 
 **Home Team**: {home_team}
 **Generated**: {timestamp}
+**Model**: {model}
+**API Cost**: ${cost:.4f}
 
 ---
 
 {prediction_text}
+
+---
+
+## ACTUAL ODDS
+
+**PARLAY 1 ODDS:**
+
+**PARLAY 2 ODDS:**
+
+**PARLAY 3 ODDS:**
 """
 
     # Save to file
@@ -250,11 +288,13 @@ def predict_game():
         border_style="cyan"
     ))
 
-    # Ask for game date
+    # Ask for game date (default to today)
+    today = date.today().isoformat()
     date_questions = [
         inquirer.Text(
             "game_date",
-            message="Enter game date (YYYY-MM-DD)",
+            message=f"Enter game date (YYYY-MM-DD) [default: {today}]",
+            default=today,
             validate=lambda _, x: len(x.split("-")) == 3 and all(p.isdigit() for p in x.split("-")),
         ),
     ]
@@ -379,12 +419,23 @@ def predict_game():
         progress.add_task(description="Generating AI parlays with 80%+ confidence...", total=None)
         result = nba_sport.predictor.generate_parlays(team_a, team_b, home_team, rankings, profile_a, profile_b)
 
+    # Extract prediction details from result dictionary
+    prediction_text = result["prediction"]
+    cost = result["cost"]
+    model = result["model"]
+    tokens = result["tokens"]
+
     # Display result with markdown rendering
     console.print()
-    console.print(Panel(Markdown(result), title="[bold green]🎯 PARLAYS 🎯[/bold green]", border_style="green", padding=(1, 2)))
+    console.print(Panel(Markdown(prediction_text), title="[bold green]🎯 PARLAYS 🎯[/bold green]", border_style="green", padding=(1, 2)))
+
+    # Display cost information
+    console.print(f"\n[dim]Model: {model}[/dim]")
+    console.print(f"[dim]Tokens: {tokens['input']:,} input, {tokens['output']:,} output ({tokens['total']:,} total)[/dim]")
+    console.print(f"[bold cyan]API Cost: ${cost:.4f}[/bold cyan]")
 
     # Save to markdown
-    save_prediction_to_markdown(game_date, team_a, team_b, home_team, result)
+    save_prediction_to_markdown(game_date, team_a, team_b, home_team, prediction_text, cost, model)
 
     # Update predictions metadata
     metadata = load_predictions_metadata()
@@ -396,7 +447,22 @@ def predict_game():
     else:
         game_key = f"{game_date}_{team_b_abbr}_{team_a_abbr}"
 
-    metadata[game_key] = date.today().isoformat()
+    # Get home team Basketball-Reference abbreviation for boxscore URL
+    home_team_pbr_abbr = None
+    for team in TEAMS:
+        if team["name"] == home_team:
+            home_team_pbr_abbr = team["pbr_abbr"]
+            break
+
+    # Save enhanced metadata structure
+    metadata[game_key] = {
+        "last_predicted": date.today().isoformat(),
+        "results_fetched": False,
+        "game_date": game_date,
+        "teams": [team_a, team_b],
+        "home_team": home_team,
+        "home_team_abbr": home_team_pbr_abbr
+    }
     save_predictions_metadata(metadata)
 
     # Display save confirmation with correct filename format (home team first, abbreviations)

@@ -56,11 +56,35 @@ def was_scraped_today(team_folder: str, metadata: dict) -> bool:
 
 
 def load_predictions_metadata() -> dict:
-    """Load predictions metadata file tracking when games were predicted."""
+    """Load predictions metadata file tracking when games were predicted.
+
+    Automatically migrates old format (string) to new format (dict) if needed.
+    """
     if os.path.exists(PREDICTIONS_METADATA_FILE):
         try:
             with open(PREDICTIONS_METADATA_FILE) as f:
-                return json.load(f)
+                metadata = json.load(f)
+
+            # Migrate old format to new format
+            migrated = False
+            for game_key, value in metadata.items():
+                if isinstance(value, str):  # Old format: just date string
+                    metadata[game_key] = {
+                        "last_predicted": value,
+                        "results_fetched": False,
+                        "game_date": None,  # Can't recover from old format
+                        "teams": None,
+                        "home_team": None,
+                        "home_team_abbr": None
+                    }
+                    migrated = True
+
+            # Save migrated version
+            if migrated:
+                save_predictions_metadata(metadata)
+                console.print("[dim]Migrated predictions metadata to new format[/dim]")
+
+            return metadata
         except Exception as e:
             console.print(f"[yellow]Warning: Could not load predictions metadata: {str(e)}[/yellow]")
             return {}
@@ -77,7 +101,7 @@ def save_predictions_metadata(metadata: dict):
         console.print(f"[yellow]Warning: Could not save predictions metadata: {str(e)}[/yellow]")
 
 
-def was_game_predicted_today(week: int, team_a: str, team_b: str, home_team: str) -> tuple[bool, str]:
+def was_game_predicted_today(game_date: str, team_a: str, team_b: str, home_team: str) -> tuple[bool, str]:
     """
     Check if a game was already predicted today.
 
@@ -92,16 +116,16 @@ def was_game_predicted_today(week: int, team_a: str, team_b: str, home_team: str
     team_b_abbr = get_team_abbreviation(team_b)
 
     if home_team == team_a:
-        game_key = f"w{week}_{team_a_abbr}_{team_b_abbr}"
+        game_key = f"{game_date}_{team_a_abbr}_{team_b_abbr}"
     else:
-        game_key = f"w{week}_{team_b_abbr}_{team_a_abbr}"
+        game_key = f"{game_date}_{team_b_abbr}_{team_a_abbr}"
 
     # Check if predicted today
     was_predicted = metadata.get(game_key) == today
 
     # Build filepath
     filename = f"{team_a_abbr}_{team_b_abbr}.md" if home_team == team_a else f"{team_b_abbr}_{team_a_abbr}.md"
-    filepath = os.path.join("nfl/predictions", f"w{week}", filename)
+    filepath = os.path.join("nfl/predictions", game_date, filename)
 
     return was_predicted, filepath
 
@@ -129,17 +153,19 @@ def get_team_abbreviation(team_name: str) -> str:
 
 
 def save_prediction_to_markdown(
-    week: int,
+    game_date: str,
     team_a: str,
     team_b: str,
     home_team: str,
     prediction_text: str,
+    cost: float = 0.0,
+    model: str = "unknown",
 ):
     """Save prediction to markdown file."""
     # Create predictions directory structure
     predictions_dir = "nfl/predictions"
-    week_dir = os.path.join(predictions_dir, f"w{week}")
-    os.makedirs(week_dir, exist_ok=True)
+    date_dir = os.path.join(predictions_dir, game_date)
+    os.makedirs(date_dir, exist_ok=True)
 
     # Get team abbreviations
     team_a_abbr = get_team_abbreviation(team_a)
@@ -151,18 +177,30 @@ def save_prediction_to_markdown(
     else:
         filename = f"{team_b_abbr}_{team_a_abbr}.md"
 
-    filepath = os.path.join(week_dir, filename)
+    filepath = os.path.join(date_dir, filename)
 
     # Build markdown content
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    markdown = f"""# {team_a} vs {team_b} - Week {week}
+    markdown = f"""# {team_a} vs {team_b} - {game_date}
 
 **Home Team**: {home_team}
 **Generated**: {timestamp}
+**Model**: {model}
+**API Cost**: ${cost:.4f}
 
 ---
 
 {prediction_text}
+
+---
+
+## ACTUAL ODDS
+
+**PARLAY 1 ODDS:**
+
+**PARLAY 2 ODDS:**
+
+**PARLAY 3 ODDS:**
 """
 
     # Save to file
@@ -250,20 +288,22 @@ def predict_game():
         border_style="cyan"
     ))
 
-    # Ask for week number
-    week_questions = [
+    # Ask for game date (default to today)
+    today = date.today().isoformat()
+    date_questions = [
         inquirer.Text(
-            "week",
-            message="Enter NFL week number (1-18)",
-            validate=lambda _, x: x.isdigit() and 1 <= int(x) <= 18,
+            "game_date",
+            message=f"Enter game date (YYYY-MM-DD) [default: {today}]",
+            default=today,
+            validate=lambda _, x: len(x.split("-")) == 3 and all(p.isdigit() for p in x.split("-")),
         ),
     ]
-    week_answers = inquirer.prompt(week_questions)
-    if not week_answers:
+    date_answers = inquirer.prompt(date_questions)
+    if not date_answers:
         console.print("[yellow]Selection cancelled.[/yellow]")
         return
 
-    week = int(week_answers["week"])
+    game_date = date_answers["game_date"]
 
     # Team selection using arrow keys
     console.print()
@@ -294,12 +334,12 @@ def predict_game():
 
     # Display matchup with rich formatting
     console.print()
-    matchup_text = f"[bold white]{team_a}[/bold white] @ [bold white]{team_b}[/bold white] - Week {week}\n"
+    matchup_text = f"[bold white]{team_a}[/bold white] @ [bold white]{team_b}[/bold white] - {game_date}\n"
     matchup_text += f"[dim]HOME: {home_team}[/dim]"
     console.print(Panel(matchup_text, title="[bold green]⚡ MATCHUP ⚡[/bold green]", border_style="green"))
 
     # Check if this game was already predicted today
-    was_predicted, filepath = was_game_predicted_today(week, team_a, team_b, home_team)
+    was_predicted, filepath = was_game_predicted_today(game_date, team_a, team_b, home_team)
 
     if was_predicted and os.path.exists(filepath):
         console.print()
@@ -379,12 +419,23 @@ def predict_game():
         progress.add_task(description="Generating AI parlays with 80%+ confidence...", total=None)
         result = nfl_sport.predictor.generate_parlays(team_a, team_b, home_team, rankings, profile_a, profile_b)
 
+    # Extract prediction details from result dictionary
+    prediction_text = result["prediction"]
+    cost = result["cost"]
+    model = result["model"]
+    tokens = result["tokens"]
+
     # Display result with markdown rendering
     console.print()
-    console.print(Panel(Markdown(result), title="[bold green]🎯 PARLAYS 🎯[/bold green]", border_style="green", padding=(1, 2)))
+    console.print(Panel(Markdown(prediction_text), title="[bold green]🎯 PARLAYS 🎯[/bold green]", border_style="green", padding=(1, 2)))
+
+    # Display cost information
+    console.print(f"\n[dim]Model: {model}[/dim]")
+    console.print(f"[dim]Tokens: {tokens['input']:,} input, {tokens['output']:,} output ({tokens['total']:,} total)[/dim]")
+    console.print(f"[bold cyan]API Cost: ${cost:.4f}[/bold cyan]")
 
     # Save to markdown
-    save_prediction_to_markdown(week, team_a, team_b, home_team, result)
+    save_prediction_to_markdown(game_date, team_a, team_b, home_team, prediction_text, cost, model)
 
     # Update predictions metadata
     metadata = load_predictions_metadata()
@@ -392,13 +443,28 @@ def predict_game():
     team_b_abbr = get_team_abbreviation(team_b)
 
     if home_team == team_a:
-        game_key = f"w{week}_{team_a_abbr}_{team_b_abbr}"
+        game_key = f"{game_date}_{team_a_abbr}_{team_b_abbr}"
     else:
-        game_key = f"w{week}_{team_b_abbr}_{team_a_abbr}"
+        game_key = f"{game_date}_{team_b_abbr}_{team_a_abbr}"
 
-    metadata[game_key] = date.today().isoformat()
+    # Get home team PFR abbreviation for boxscore URL
+    home_team_pfr_abbr = None
+    for team in TEAMS:
+        if team["name"] == home_team:
+            home_team_pfr_abbr = team["pfr_abbr"]
+            break
+
+    # Save enhanced metadata structure
+    metadata[game_key] = {
+        "last_predicted": date.today().isoformat(),
+        "results_fetched": False,
+        "game_date": game_date,
+        "teams": [team_a, team_b],
+        "home_team": home_team,
+        "home_team_abbr": home_team_pfr_abbr
+    }
     save_predictions_metadata(metadata)
 
     # Display save confirmation with correct filename format (home team first, abbreviations)
     filename = f"{team_a_abbr}_{team_b_abbr}.md" if home_team == team_a else f"{team_b_abbr}_{team_a_abbr}.md"
-    console.print(f"\n[green]✓[/green] [dim]Prediction saved to predictions/w{week}/{filename}[/dim]")
+    console.print(f"\n[green]✓[/green] [dim]Saved to nfl/predictions/{game_date}/{filename}[/dim]")

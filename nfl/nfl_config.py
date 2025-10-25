@@ -55,6 +55,18 @@ class NFLConfig(SportConfig):
         return DATA_PROFILES_DIR
 
     @property
+    def predictions_dir(self) -> str:
+        return "nfl/predictions"
+
+    @property
+    def results_dir(self) -> str:
+        return "nfl/results"
+
+    @property
+    def analysis_dir(self) -> str:
+        return "nfl/analysis"
+
+    @property
     def prompt_components(self) -> NFLPromptComponents:
         return NFLPromptComponents()
 
@@ -68,3 +80,23 @@ class NFLConfig(SportConfig):
             Complete URL for the team's page
         """
         return f"https://www.pro-football-reference.com/teams/{team_abbr}/{CURRENT_YEAR}.htm"
+
+    def build_boxscore_url(self, game_date: str, home_team_abbr: str) -> str:
+        """Build NFL boxscore URL using Pro-Football-Reference pattern.
+
+        Args:
+            game_date: Game date in YYYY-MM-DD format
+            home_team_abbr: PFR home team abbreviation (e.g., "buf")
+
+        Returns:
+            Complete URL for the game's boxscore page
+
+        Example:
+            build_boxscore_url("2025-10-23", "sdg")
+            -> "https://www.pro-football-reference.com/boxscores/202510230sdg.htm"
+
+        Note:
+            PFR URLs include a "0" prefix before the team abbreviation
+        """
+        date_str = game_date.replace("-", "")  # "2025-10-23" -> "20251023"
+        return f"https://www.pro-football-reference.com/boxscores/{date_str}0{home_team_abbr}.htm"
