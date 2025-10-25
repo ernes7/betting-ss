@@ -82,7 +82,7 @@ class Predictor:
         rankings: dict | None = None,
         profile_a: dict | None = None,
         profile_b: dict | None = None,
-    ) -> str:
+    ) -> dict:
         """Generate betting parlays using Claude API.
 
         Args:
@@ -94,11 +94,22 @@ class Predictor:
             profile_b: Team B's detailed profile (will load if not provided)
 
         Returns:
-            Formatted parlay suggestions from Claude API
+            Dictionary with prediction text, cost, model, and token usage:
+            {
+                "prediction": str,
+                "cost": float,
+                "model": str,
+                "tokens": {"input": int, "output": int, "total": int}
+            }
         """
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
-            return "Error: ANTHROPIC_API_KEY not found in .env file"
+            return {
+                "prediction": "Error: ANTHROPIC_API_KEY not found in .env file",
+                "cost": 0.0,
+                "model": "unknown",
+                "tokens": {"input": 0, "output": 0, "total": 0}
+            }
 
         # Load rankings if not provided
         if rankings is None:
@@ -109,7 +120,12 @@ class Predictor:
         team_b_stats = self.get_team_from_rankings(rankings, team_b)
 
         if not team_a_stats or not team_b_stats:
-            return f"Error: Could not find stats for {team_a} or {team_b} in rankings"
+            return {
+                "prediction": f"Error: Could not find stats for {team_a} or {team_b} in rankings",
+                "cost": 0.0,
+                "model": "unknown",
+                "tokens": {"input": 0, "output": 0, "total": 0}
+            }
 
         # Load profiles if not provided
         if profile_a is None:
@@ -130,16 +146,42 @@ class Predictor:
         )
 
         # Call Claude API
+        model_name = "claude-sonnet-4-5-20250929"
         client = anthropic.Anthropic(api_key=api_key)
 
         try:
             message = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model=model_name,
                 max_tokens=2048,
                 messages=[{"role": "user", "content": prompt}],
             )
 
-            return message.content[0].text
+            # Extract token usage and calculate cost
+            # Claude Sonnet 4.5 pricing: $3/MTok input, $15/MTok output
+            input_tokens = message.usage.input_tokens
+            output_tokens = message.usage.output_tokens
+            total_tokens = input_tokens + output_tokens
+
+            # Calculate cost in USD
+            input_cost = (input_tokens / 1_000_000) * 3.0
+            output_cost = (output_tokens / 1_000_000) * 15.0
+            total_cost = input_cost + output_cost
+
+            return {
+                "prediction": message.content[0].text,
+                "cost": total_cost,
+                "model": model_name,
+                "tokens": {
+                    "input": input_tokens,
+                    "output": output_tokens,
+                    "total": total_tokens
+                }
+            }
 
         except Exception as e:
-            return f"Error calling Anthropic API: {str(e)}"
+            return {
+                "prediction": f"Error calling Anthropic API: {str(e)}",
+                "cost": 0.0,
+                "model": model_name,
+                "tokens": {"input": 0, "output": 0, "total": 0}
+            }

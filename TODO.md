@@ -18,10 +18,11 @@
 [ ] - NHL
 
 ** NBA **
+[x] - default date to today date if no input for date
 [x] - Extract Rankings and Profiles
-[ ] - CLI
+[x] - CLI
 [ ] - Fetch Results
-[ ] - NBA Prompt
+[x] - NBA Prompt
 
 
 ## Analytics

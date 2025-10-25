@@ -1,0 +1,35 @@
+{
+  "table_name": "Injury Report Table",
+  "headers": [
+    "player",
+    "team_name",
+    "date_update",
+    "note"
+  ],
+  "data": [
+    {
+      "player": "Isaiah Crawford",
+      "team_name": "Houston Rockets",
+      "date_update": "Thu, Oct 23, 2025",
+      "note": "Day To Day (Ankle) - The Rockets listed Crawford as Questionable for Friday's (Oct. 24) game against the Pistons."
+    },
+    {
+      "player": "Dorian Finney-Smith",
+      "team_name": "Houston Rockets",
+      "date_update": "Thu, Oct 23, 2025",
+      "note": "Out (Ankle) - The Rockets listed Finney-Smith as Out for Friday's (Oct. 24) game against the Pistons."
+    },
+    {
+      "player": "Jae'Sean Tate",
+      "team_name": "Houston Rockets",
+      "date_update": "Thu, Oct 23, 2025",
+      "note": "Day To Day (Ankle) - The Rockets listed Tate as Questionable for Friday's (Oct. 24) game against the Pistons."
+    },
+    {
+      "player": "Fred VanVleet",
+      "team_name": "Houston Rockets",
+      "date_update": "Mon, Sep 22, 2025",
+      "note": "Out For Season (ACL) - The Rockets said on Monday (Sept. 22) that VanVleet suffered a torn ACL and may be out for the entire 2025-26 campaign, per Shams Charania of ESPN."
+    }
+  ]
+}
