@@ -1,0 +1,51 @@
+{
+  "sport": "nfl",
+  "teams": [
+    "Los Angeles Chargers",
+    "Minnesota Vikings"
+  ],
+  "home_team": "Los Angeles Chargers",
+  "date": "w8",
+  "generated_at": "2025-10-23 17:13:23",
+  "model": "unknown",
+  "api_cost": 0.0,
+  "tokens": null,
+  "parlays": [
+    {
+      "name": "Parlay 1: Los Angeles Chargers Wins",
+      "confidence": 82,
+      "bets": [
+        "Los Angeles Chargers Moneyline",
+        "Justin Herbert Over 265.5 passing yards",
+        "Ladd McConkey Over 5.5 receptions",
+        "Over 45.5 total points"
+      ],
+      "reasoning": "The Chargers have a superior passing offense (3rd ranked) at home against a Vikings team starting Carson Wentz who has struggled with turnovers (7 INTs in 4 starts). Herbert averages 273.3 yards per game and should exploit Minnesota's weaker pass defense. McConkey is averaging 5.3 receptions per game as Herbert's reliable target, and both offenses have shown they can score despite some inconsistencies.",
+      "odds": null
+    },
+    {
+      "name": "Parlay 2: Minnesota Vikings Wins",
+      "confidence": 78,
+      "bets": [
+        "Minnesota Vikings Moneyline",
+        "Justin Jefferson Over 75.5 receiving yards",
+        "Jordan Mason Over 65.5 rushing yards",
+        "Under 47.5 total points"
+      ],
+      "reasoning": "Minnesota's defense ranks significantly better than the Chargers' (9th vs 18th in total yards allowed), and they're getting healthier with key players potentially returning. Jefferson is averaging 88 yards per game and should find success against LA's secondary. Mason has been consistent with 63.3 yards per game, and if this becomes a defensive struggle with the Chargers' key injuries on offense, the under becomes very viable.",
+      "odds": null
+    },
+    {
+      "name": "Parlay 3: Safe Picks (No Winner Required)",
+      "confidence": 95,
+      "bets": [
+        "Justin Herbert Over 22.5 completions",
+        "Justin Jefferson Over 4.5 receptions",
+        "Cameron Dicker Over 1.5 field goals",
+        "Tuli Tuipulotu Over 0.5 sacks"
+      ],
+      "reasoning": "Herbert is completing 26.1 passes per game and rarely falls below this conservative line even in poor performances. Jefferson averages 5.7 receptions per game and is the Vikings' primary target regardless of game flow. Dicker has been perfect on field goals (15/15) and averages over 2 per game. Tuipulotu has 5 sacks in 7 games and faces a Vikings offensive line that has allowed 23 sacks in just 6 games, making this an extremely safe bet.",
+      "odds": null
+    }
+  ]
+}

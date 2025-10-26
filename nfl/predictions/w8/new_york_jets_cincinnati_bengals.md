@@ -43,3 +43,13 @@ Looking at the injury reports and team statistics, I need to exclude several key
 4. Over 2.5 total field goals
 
 **Reasoning**: Fields is averaging 14.3 completions per game over 6 games, making 25.5 very conservative. Chase leads the league in targets (80) and averages 8.3 receptions per game. Both teams have reliable kickers (Folk 14/14 FGs, McPherson 10/12 FGs) and struggle in the red zone, making field goals likely. These are extremely safe statistical plays based on season-long consistency.
+
+---
+
+## ACTUAL ODDS
+
+**PARLAY 1 ODDS:**
+
+**PARLAY 2 ODDS:**
+
+**PARLAY 3 ODDS:**

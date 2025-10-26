@@ -1,0 +1,51 @@
+{
+  "sport": "nfl",
+  "teams": [
+    "New York Jets",
+    "Cincinnati Bengals"
+  ],
+  "home_team": "Cincinnati Bengals",
+  "date": "w8",
+  "generated_at": "2025-10-23 17:42:22",
+  "model": "unknown",
+  "api_cost": 0.0,
+  "tokens": null,
+  "parlays": [
+    {
+      "name": "Parlay 1: New York Jets Wins",
+      "confidence": 82,
+      "bets": [
+        "New York Jets Moneyline +165",
+        "Justin Fields Over 35.5 rushing yards",
+        "Chase Brown Under 65.5 rushing yards",
+        "Under 42.5 total points"
+      ],
+      "reasoning": "The Jets are 0-7 but facing a Bengals team without Joe Burrow (IR) and with major defensive issues (31st in points allowed). Cincinnati's backup QBs have struggled with 8 interceptions in recent games. The Jets' strong rushing attack (7th ranked) should control the game against Cincinnati's 32nd-ranked rush defense.",
+      "odds": null
+    },
+    {
+      "name": "Parlay 2: Cincinnati Bengals Wins",
+      "confidence": 85,
+      "bets": [
+        "Cincinnati Bengals -3.5",
+        "Ja'Marr Chase Over 75.5 receiving yards",
+        "Tee Higgins Over 5.5 receptions",
+        "Jake Browning Over 22.5 completions"
+      ],
+      "reasoning": "Despite Burrow's absence, the Bengals are at home against an 0-7 Jets team that ranks 32nd in passing offense and has allowed 183 points in 7 games. Ja'Marr Chase is averaging 89.9 yards per game, and the Jets' pass defense has been exploitable. The Bengals' passing attack should find success against New York's secondary.",
+      "odds": null
+    },
+    {
+      "name": "Parlay 3: Safe Picks (No Winner Required)",
+      "confidence": 95,
+      "bets": [
+        "Justin Fields Over 25.5 pass completions",
+        "Ja'Marr Chase Over 6.5 receptions",
+        "Nick Folk Over 1.5 field goals made",
+        "Over 2.5 total field goals"
+      ],
+      "reasoning": "Fields is averaging 14.3 completions per game over 6 games, making 25.5 very conservative. Chase leads the league in targets (80) and averages 8.3 receptions per game. Both teams have reliable kickers (Folk 14/14 FGs, McPherson 10/12 FGs) and struggle in the red zone, making field goals likely. These are extremely safe statistical plays based on season-long consistency.",
+      "odds": null
+    }
+  ]
+}

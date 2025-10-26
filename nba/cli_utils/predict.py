@@ -152,6 +152,42 @@ def get_team_abbreviation(team_name: str) -> str:
     return team_name.lower().replace(" ", "_")
 
 
+def parse_prediction_text(prediction_text: str) -> list[dict]:
+    """Parse prediction text to extract structured parlay data.
+
+    Args:
+        prediction_text: Raw prediction text from Claude API
+
+    Returns:
+        List of parlay dictionaries with name, confidence, bets, reasoning
+    """
+    import re
+
+    parlays = []
+    parlay_pattern = r'## (Parlay \d+: .+?)\n\*\*Confidence\*\*: (\d+)%\n\n\*\*Bets:\*\*\n(.+?)\n\n\*\*Reasoning\*\*: (.+?)(?=\n##|\Z)'
+
+    for match in re.finditer(parlay_pattern, prediction_text, re.DOTALL):
+        parlay_name = match.group(1).strip()
+        confidence = int(match.group(2))
+        bets_text = match.group(3).strip()
+        reasoning = match.group(4).strip()
+
+        # Parse bets list (numbered items)
+        bets = []
+        for bet_match in re.finditer(r'^\d+\.\s+(.+?)$', bets_text, re.MULTILINE):
+            bets.append(bet_match.group(1).strip())
+
+        parlays.append({
+            "name": parlay_name,
+            "confidence": confidence,
+            "bets": bets,
+            "reasoning": reasoning,
+            "odds": None  # To be filled in later
+        })
+
+    return parlays
+
+
 def save_prediction_to_markdown(
     game_date: str,
     team_a: str,
@@ -160,8 +196,20 @@ def save_prediction_to_markdown(
     prediction_text: str,
     cost: float = 0.0,
     model: str = "unknown",
+    tokens: dict = None,
 ):
-    """Save prediction to markdown file."""
+    """Save prediction to markdown and JSON files.
+
+    Args:
+        game_date: Game date/week identifier
+        team_a: First team name
+        team_b: Second team name
+        home_team: Home team name
+        prediction_text: Raw prediction text from API
+        cost: API cost in USD
+        model: Model name used
+        tokens: Token usage dict with input, output, total keys
+    """
     # Create predictions directory structure
     predictions_dir = "nba/predictions"
     date_dir = os.path.join(predictions_dir, game_date)
@@ -173,11 +221,12 @@ def save_prediction_to_markdown(
 
     # Put home team first in filename
     if home_team == team_a:
-        filename = f"{team_a_abbr}_{team_b_abbr}.md"
+        base_filename = f"{team_a_abbr}_{team_b_abbr}"
     else:
-        filename = f"{team_b_abbr}_{team_a_abbr}.md"
+        base_filename = f"{team_b_abbr}_{team_a_abbr}"
 
-    filepath = os.path.join(date_dir, filename)
+    md_filepath = os.path.join(date_dir, f"{base_filename}.md")
+    json_filepath = os.path.join(date_dir, f"{base_filename}.json")
 
     # Build markdown content
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -203,9 +252,30 @@ def save_prediction_to_markdown(
 **PARLAY 3 ODDS:**
 """
 
-    # Save to file
-    with open(filepath, "w", encoding="utf-8") as f:
+    # Save markdown file
+    with open(md_filepath, "w", encoding="utf-8") as f:
         f.write(markdown)
+
+    # Parse prediction text to extract structured data
+    parlays = parse_prediction_text(prediction_text)
+
+    # Build JSON structure
+    prediction_data = {
+        "sport": "nba",
+        "teams": [team_a, team_b],
+        "home_team": home_team,
+        "date": game_date,
+        "generated_at": timestamp,
+        "model": model,
+        "api_cost": cost,
+        "tokens": tokens,
+        "parlays": parlays
+    }
+
+    # Save JSON file
+    import json
+    with open(json_filepath, "w", encoding="utf-8") as f:
+        json.dump(prediction_data, f, indent=2, ensure_ascii=False)
 
 
 def load_team_profiles(team_a: str, team_b: str) -> tuple[dict, dict]:
@@ -434,8 +504,8 @@ def predict_game():
     console.print(f"[dim]Tokens: {tokens['input']:,} input, {tokens['output']:,} output ({tokens['total']:,} total)[/dim]")
     console.print(f"[bold cyan]API Cost: ${cost:.4f}[/bold cyan]")
 
-    # Save to markdown
-    save_prediction_to_markdown(game_date, team_a, team_b, home_team, prediction_text, cost, model)
+    # Save to markdown and JSON
+    save_prediction_to_markdown(game_date, team_a, team_b, home_team, prediction_text, cost, model, tokens)
 
     # Update predictions metadata
     metadata = load_predictions_metadata()

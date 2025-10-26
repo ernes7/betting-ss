@@ -37,3 +37,13 @@
 4. Tuli Tuipulotu Over 0.5 sacks
 
 **Reasoning**: Herbert is completing 26.1 passes per game and rarely falls below this conservative line even in poor performances. Jefferson averages 5.7 receptions per game and is the Vikings' primary target regardless of game flow. Dicker has been perfect on field goals (15/15) and averages over 2 per game. Tuipulotu has 5 sacks in 7 games and faces a Vikings offensive line that has allowed 23 sacks in just 6 games, making this an extremely safe bet.
+
+---
+
+## ACTUAL ODDS
+
+**PARLAY 1 ODDS:**
+
+**PARLAY 2 ODDS:**
+
+**PARLAY 3 ODDS:**
