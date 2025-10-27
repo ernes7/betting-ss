@@ -35,3 +35,7 @@ screenshots/
 
 # Local HTML files (can be re-downloaded)
 *.html
+
+# Data directories (all generated/scraped data)
+nfl/data/
+nba/data/

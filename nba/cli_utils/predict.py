@@ -24,7 +24,7 @@ console = Console()
 
 # Metadata file paths
 METADATA_FILE = "nba/data/profiles/.metadata.json"
-PREDICTIONS_METADATA_FILE = "nba/predictions/.metadata.json"
+PREDICTIONS_METADATA_FILE = "nba/data/predictions/.metadata.json"
 
 
 def load_metadata() -> dict:
@@ -164,7 +164,8 @@ def parse_prediction_text(prediction_text: str) -> list[dict]:
     import re
 
     parlays = []
-    parlay_pattern = r'## (Parlay \d+: .+?)\n\*\*Confidence\*\*: (\d+)%\n\n\*\*Bets:\*\*\n(.+?)\n\n\*\*Reasoning\*\*: (.+?)(?=\n##|\Z)'
+    # Updated pattern to handle confidence like "97%+" (with optional +)
+    parlay_pattern = r'## (Parlay \d+: .+?)\n\*\*Confidence\*\*: (\d+)%\+?\n\n\*\*Bets:\*\*\n(.+?)\n\n\*\*Reasoning\*\*: (.+?)(?=\n##|\Z)'
 
     for match in re.finditer(parlay_pattern, prediction_text, re.DOTALL):
         parlay_name = match.group(1).strip()
@@ -211,7 +212,7 @@ def save_prediction_to_markdown(
         tokens: Token usage dict with input, output, total keys
     """
     # Create predictions directory structure
-    predictions_dir = "nba/predictions"
+    predictions_dir = "nba/data/predictions"
     date_dir = os.path.join(predictions_dir, game_date)
     os.makedirs(date_dir, exist_ok=True)
 
@@ -489,6 +490,22 @@ def predict_game():
         progress.add_task(description="Generating AI parlays with 80%+ confidence...", total=None)
         result = nba_sport.predictor.generate_parlays(team_a, team_b, home_team, rankings, profile_a, profile_b)
 
+    # Check if API call was successful
+    if not result.get("success", False):
+        console.print()
+        error_msg = result.get("error", "Unknown error")
+        console.print(Panel(
+            f"[bold red]API Call Failed[/bold red]\n\n{error_msg}\n\n"
+            "[yellow]Possible causes:[/yellow]\n"
+            "• Rate limiting (30k tokens/minute exceeded)\n"
+            "• Network connectivity issues\n"
+            "• API service unavailable\n\n"
+            "[dim]No files were saved. Metadata was not updated.[/dim]",
+            border_style="red",
+            padding=(1, 2)
+        ))
+        return
+
     # Extract prediction details from result dictionary
     prediction_text = result["prediction"]
     cost = result["cost"]
@@ -504,37 +521,48 @@ def predict_game():
     console.print(f"[dim]Tokens: {tokens['input']:,} input, {tokens['output']:,} output ({tokens['total']:,} total)[/dim]")
     console.print(f"[bold cyan]API Cost: ${cost:.4f}[/bold cyan]")
 
-    # Save to markdown and JSON
-    save_prediction_to_markdown(game_date, team_a, team_b, home_team, prediction_text, cost, model, tokens)
+    # Wrap file save and metadata update in try-catch
+    try:
+        # Save to markdown and JSON
+        save_prediction_to_markdown(game_date, team_a, team_b, home_team, prediction_text, cost, model, tokens)
 
-    # Update predictions metadata
-    metadata = load_predictions_metadata()
-    team_a_abbr = get_team_abbreviation(team_a)
-    team_b_abbr = get_team_abbreviation(team_b)
+        # Update predictions metadata ONLY after successful file save
+        metadata = load_predictions_metadata()
+        team_a_abbr = get_team_abbreviation(team_a)
+        team_b_abbr = get_team_abbreviation(team_b)
 
-    if home_team == team_a:
-        game_key = f"{game_date}_{team_a_abbr}_{team_b_abbr}"
-    else:
-        game_key = f"{game_date}_{team_b_abbr}_{team_a_abbr}"
+        if home_team == team_a:
+            game_key = f"{game_date}_{team_a_abbr}_{team_b_abbr}"
+        else:
+            game_key = f"{game_date}_{team_b_abbr}_{team_a_abbr}"
 
-    # Get home team Basketball-Reference abbreviation for boxscore URL
-    home_team_pbr_abbr = None
-    for team in TEAMS:
-        if team["name"] == home_team:
-            home_team_pbr_abbr = team["pbr_abbr"]
-            break
+        # Get home team Basketball-Reference abbreviation for boxscore URL
+        home_team_pbr_abbr = None
+        for team in TEAMS:
+            if team["name"] == home_team:
+                home_team_pbr_abbr = team["pbr_abbr"]
+                break
 
-    # Save enhanced metadata structure
-    metadata[game_key] = {
-        "last_predicted": date.today().isoformat(),
-        "results_fetched": False,
-        "game_date": game_date,
-        "teams": [team_a, team_b],
-        "home_team": home_team,
-        "home_team_abbr": home_team_pbr_abbr
-    }
-    save_predictions_metadata(metadata)
+        # Save enhanced metadata structure
+        metadata[game_key] = {
+            "last_predicted": date.today().isoformat(),
+            "results_fetched": False,
+            "game_date": game_date,
+            "teams": [team_a, team_b],
+            "home_team": home_team,
+            "home_team_abbr": home_team_pbr_abbr
+        }
+        save_predictions_metadata(metadata)
 
-    # Display save confirmation with correct filename format (home team first, abbreviations)
-    filename = f"{team_a_abbr}_{team_b_abbr}.md" if home_team == team_a else f"{team_b_abbr}_{team_a_abbr}.md"
-    console.print(f"\n[green]✓[/green] [dim]Saved to nba/predictions/{game_date}/{filename}[/dim]")
+        # Display save confirmation with correct filename format (home team first, abbreviations)
+        filename = f"{team_a_abbr}_{team_b_abbr}.md" if home_team == team_a else f"{team_b_abbr}_{team_a_abbr}.md"
+        console.print(f"\n[green]✓[/green] [dim]Saved to nba/data/predictions/{game_date}/{filename}[/dim]")
+
+    except Exception as e:
+        console.print()
+        console.print(Panel(
+            f"[bold red]Failed to Save Prediction[/bold red]\n\n{str(e)}\n\n"
+            "[dim]Files may not have been saved. Metadata was not updated.[/dim]",
+            border_style="red",
+            padding=(1, 2)
+        ))

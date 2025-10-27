@@ -2,6 +2,8 @@
 
 import json
 
+from shared.utils.data_optimizer import optimize_team_profile
+
 
 class PromptBuilder:
     """Builds prediction prompts using shared template + sport-specific components."""
@@ -34,6 +36,10 @@ class PromptBuilder:
         Returns:
             Formatted prompt string for Claude API
         """
+        # Optimize team profiles to reduce token usage
+        optimized_profile_a = optimize_team_profile(profile_a)
+        optimized_profile_b = optimize_team_profile(profile_b)
+
         # Build comprehensive data context
         data_context = f"""{team_a.upper()} RANKING STATS:
 {json.dumps(team_a_stats, indent=2)}
@@ -41,11 +47,11 @@ class PromptBuilder:
 {team_b.upper()} RANKING STATS:
 {json.dumps(team_b_stats, indent=2)}"""
 
-        # Add profile data if available
-        if profile_a:
-            data_context += f"\n\n{team_a.upper()} DETAILED PROFILE:\n{json.dumps(profile_a, indent=2)}"
-        if profile_b:
-            data_context += f"\n\n{team_b.upper()} DETAILED PROFILE:\n{json.dumps(profile_b, indent=2)}"
+        # Add optimized profile data if available
+        if optimized_profile_a:
+            data_context += f"\n\n{team_a.upper()} DETAILED PROFILE:\n{json.dumps(optimized_profile_a, indent=2)}"
+        if optimized_profile_b:
+            data_context += f"\n\n{team_b.upper()} DETAILED PROFILE:\n{json.dumps(optimized_profile_b, indent=2)}"
 
         # Get sport-specific parlay configuration (or use defaults)
         parlay_legs = getattr(sport_components, 'parlay_legs', '3-4')
@@ -94,6 +100,10 @@ DATA:
 {data_context}
 
 {sport_components.important_notes}
+
+{getattr(sport_components, 'conservative_line_rules', '')}
+
+{getattr(sport_components, 'game_script_rules', '')}
 
 Generate exactly this format:
 

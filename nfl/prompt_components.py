@@ -32,4 +32,28 @@ class NFLPromptComponents:
 
     stat_tables_to_analyze = "team_stats, passing, rushing_receiving, defense_fumbles, touchdown_log, scoring_summary, injury_report"
 
+    conservative_line_rules = """CONSERVATIVE LINE SELECTION (CRITICAL):
+- Yardage props (passing/rushing/receiving yards): Pick lines 30% BELOW player's season average
+  Example: Player averages 100 yards → Target line at 70.5 or lower
+- Volume props (completions, attempts, receptions, targets, rush attempts): Pick lines 25% BELOW player's average
+  Example: Player averages 20 completions → Target line at 15.5 or lower
+- Game totals: Pick numbers with 15+ point cushion from expected total
+  Example: Expected 48 points → Pick Over 33.5 or Under 63.5
+- AVOID tight lines even if "likely" - we need CERTAINTY not likelihood
+- Better to have ultra-safe props than risky ones"""
+
+    game_script_rules = """GAME SCRIPT AWARENESS - AVOID CONFLICTING CORRELATIONS:
+❌ NEVER combine:
+  - "Favorite wins big" + "Favorite QB high passing yards" (blowouts = run clock = fewer passes)
+  - "Underdog wins" + "Underdog player props assuming they're losing" (contradiction)
+  - "High total points" + "Under on player yards" (high scoring = more yards)
+
+✅ SAFE combinations:
+  - "Favorite wins" + "Favorite RB rushing yards/attempts" (winning teams run more)
+  - "Favorite wins" + "Underdog QB passing yards/attempts" (losing teams pass more)
+  - Volume stats (attempts, receptions, targets) work with ANY game outcome
+  - Defensive props (sacks, tackles) work with ANY game outcome
+
+RULE: If betting on a blowout win, favor the WINNER's rushing props and LOSER's passing props"""
+
     important_notes = "IMPORTANT: Before generating parlays, check injury_report data to exclude all injured players from prop bets."

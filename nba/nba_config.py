@@ -36,6 +36,11 @@ class NBAConfig(SportConfig):
         return TEAM_PROFILE_TABLES
 
     @property
+    def result_tables(self) -> dict[str, str]:
+        # TODO: Implement NBA result tables (to be added in future)
+        return {}
+
+    @property
     def stats_url(self) -> str:
         return NBA_STATS_URL
 
@@ -57,15 +62,15 @@ class NBAConfig(SportConfig):
 
     @property
     def predictions_dir(self) -> str:
-        return "nba/predictions"
+        return "nba/data/predictions"
 
     @property
     def results_dir(self) -> str:
-        return "nba/results"
+        return "nba/data/results"
 
     @property
     def analysis_dir(self) -> str:
-        return "nba/analysis"
+        return "nba/data/analysis"
 
     @property
     def prompt_components(self) -> NBAPromptComponents:
