@@ -41,6 +41,12 @@ class SportConfig(ABC):
 
     @property
     @abstractmethod
+    def result_tables(self) -> dict[str, str]:
+        """Return mapping of table names to HTML table IDs for game results/boxscores."""
+        pass
+
+    @property
+    @abstractmethod
     def stats_url(self) -> str:
         """Return the main stats/rankings URL for the sport."""
         pass

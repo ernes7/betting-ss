@@ -9,6 +9,7 @@ from nfl.constants import (
     NFL_STATS_URL,
     RANKING_TABLES,
     TEAM_PROFILE_TABLES,
+    RESULT_TABLES,
     DATA_RANKINGS_DIR,
     DATA_PROFILES_DIR,
 )
@@ -35,6 +36,10 @@ class NFLConfig(SportConfig):
         return TEAM_PROFILE_TABLES
 
     @property
+    def result_tables(self) -> dict[str, str]:
+        return RESULT_TABLES
+
+    @property
     def stats_url(self) -> str:
         return NFL_STATS_URL
 
@@ -56,15 +61,15 @@ class NFLConfig(SportConfig):
 
     @property
     def predictions_dir(self) -> str:
-        return "nfl/predictions"
+        return "nfl/data/predictions"
 
     @property
     def results_dir(self) -> str:
-        return "nfl/results"
+        return "nfl/data/results"
 
     @property
     def analysis_dir(self) -> str:
-        return "nfl/analysis"
+        return "nfl/data/analysis"
 
     @property
     def prompt_components(self) -> NFLPromptComponents:

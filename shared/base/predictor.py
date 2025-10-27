@@ -15,13 +15,15 @@ load_dotenv()
 class Predictor:
     """Base predictor class with common logic for all sports."""
 
-    def __init__(self, config: SportConfig):
+    def __init__(self, config: SportConfig, model: str = "claude-sonnet-4-5-20250929"):
         """Initialize predictor with sport-specific configuration.
 
         Args:
             config: Sport configuration object implementing SportConfig interface
+            model: Claude model to use (default: claude-sonnet-4-5-20250929)
         """
         self.config = config
+        self.model = model
         self.prompt_builder = PromptBuilder()
 
     def load_ranking_tables(self) -> dict[str, dict]:
@@ -146,31 +148,37 @@ class Predictor:
         )
 
         # Call Claude API
-        model_name = "claude-sonnet-4-5-20250929"
         client = anthropic.Anthropic(api_key=api_key)
 
         try:
             message = client.messages.create(
-                model=model_name,
+                model=self.model,
                 max_tokens=2048,
                 messages=[{"role": "user", "content": prompt}],
             )
 
             # Extract token usage and calculate cost
-            # Claude Sonnet 4.5 pricing: $3/MTok input, $15/MTok output
             input_tokens = message.usage.input_tokens
             output_tokens = message.usage.output_tokens
             total_tokens = input_tokens + output_tokens
 
-            # Calculate cost in USD
-            input_cost = (input_tokens / 1_000_000) * 3.0
-            output_cost = (output_tokens / 1_000_000) * 15.0
+            # Calculate cost based on model
+            # Claude Sonnet 4.5: $3/MTok input, $15/MTok output
+            # Claude Haiku 4.5: $0.80/MTok input, $4/MTok output
+            if "haiku" in self.model.lower():
+                input_cost = (input_tokens / 1_000_000) * 0.80
+                output_cost = (output_tokens / 1_000_000) * 4.0
+            else:  # Sonnet
+                input_cost = (input_tokens / 1_000_000) * 3.0
+                output_cost = (output_tokens / 1_000_000) * 15.0
+
             total_cost = input_cost + output_cost
 
             return {
+                "success": True,
                 "prediction": message.content[0].text,
                 "cost": total_cost,
-                "model": model_name,
+                "model": self.model,
                 "tokens": {
                     "input": input_tokens,
                     "output": output_tokens,
@@ -180,8 +188,10 @@ class Predictor:
 
         except Exception as e:
             return {
-                "prediction": f"Error calling Anthropic API: {str(e)}",
+                "success": False,
+                "error": str(e),
+                "prediction": "",
                 "cost": 0.0,
-                "model": model_name,
+                "model": self.model,
                 "tokens": {"input": 0, "output": 0, "total": 0}
             }

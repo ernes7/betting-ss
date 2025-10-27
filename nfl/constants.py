@@ -39,6 +39,20 @@ TEAM_PROFILE_TABLES = {
     "touchdown_log": "team_td_log",
 }
 
+# Result tables to extract from boxscore pages
+# These are extracted after a game has been played
+RESULT_TABLES = {
+    "scoring": "scoring",
+    "game_info": "game_info",
+    "team_stats": "team_stats",
+    "passing": "passing_advanced",
+    "rushing": "rushing_advanced",
+    "receiving": "receiving_advanced",
+    "defense": "player_defense",
+    "home_starters": "home_starters",
+    "away_starters": "vis_starters",
+}
+
 # Data folder paths
 DATA_RANKINGS_DIR = "nfl/data/rankings"
 DATA_PROFILES_DIR = "nfl/data/profiles"
