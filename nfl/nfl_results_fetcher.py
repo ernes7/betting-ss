@@ -7,11 +7,12 @@ from ratelimit import limits, sleep_and_retry
 from shared.base.results_fetcher import ResultsFetcher
 from shared.base.sport_config import SportConfig
 from shared.utils import WebScraper, TableExtractor
+from shared.utils.data_optimizer import split_player_offense_result
 
 
 class NFLResultsFetcher(ResultsFetcher):
     """Fetch NFL game results from Pro-Football-Reference boxscore pages.
-
+sk
     Extracts:
     - Final score and winner
     - Quarter-by-quarter scoring
@@ -106,6 +107,25 @@ class NFLResultsFetcher(ResultsFetcher):
                     else:
                         tables_missing.append(table_name)
                         print(f"    ⚠ Table '#{table_id}' not found")
+
+                # Split player_offense into passing/rushing/receiving if extracted
+                if "player_offense" in result_data["tables"]:
+                    print(f"  → Splitting player_offense into passing/rushing/receiving...")
+                    split_tables = split_player_offense_result(result_data["tables"]["player_offense"])
+
+                    # Remove the combined table
+                    del result_data["tables"]["player_offense"]
+
+                    # Add the split tables
+                    if split_tables["passing"]:
+                        result_data["tables"]["passing"] = split_tables["passing"]
+                        print(f"    ✓ Passing: {len(split_tables['passing']['data'])} players")
+                    if split_tables["rushing"]:
+                        result_data["tables"]["rushing"] = split_tables["rushing"]
+                        print(f"    ✓ Rushing: {len(split_tables['rushing']['data'])} players")
+                    if split_tables["receiving"]:
+                        result_data["tables"]["receiving"] = split_tables["receiving"]
+                        print(f"    ✓ Receiving: {len(split_tables['receiving']['data'])} players")
 
                 # Check if we got critical tables
                 if "scoring" not in result_data["tables"]:

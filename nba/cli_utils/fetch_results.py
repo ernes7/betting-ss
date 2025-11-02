@@ -96,13 +96,8 @@ def wait_with_countdown(seconds: int, next_game_info: str, current: int, total: 
             # Windows fallback - just wait
             time.sleep(0.1)
 
-        # Update countdown display
-        progress = (seconds - remaining) / seconds
-        bar_width = 30
-        filled = int(bar_width * progress)
-        bar = "█" * filled + "░" * (bar_width - filled)
-
-        console.print(f"\r  {bar} {remaining}s remaining", end="", style="dim")
+        # Update countdown display with simple counter
+        console.print(f"\r  ⏱️  {remaining}s remaining", end="", style="dim")
 
         time.sleep(0.1)
 
@@ -232,6 +227,9 @@ def fetch_results():
         matchup = f"{teams[0]} vs {teams[1]}"
         console.print(f"\n[bold cyan]━━━ Game {idx}/{len(games_to_fetch)}: {matchup} ━━━[/bold cyan]")
 
+        # Track if we called Anthropic API for this game
+        called_anthropic = False
+
         try:
             # Build boxscore URL
             boxscore_url = config.build_boxscore_url(game_date, home_team_abbr)
@@ -244,7 +242,7 @@ def fetch_results():
             result_data["game_date"] = game_date
 
             # Save result to JSON
-            save_result_to_json(game_date, game_key, result_data)
+            save_result_to_json(game_date, game_key, result_data, config)
 
             # Update metadata
             metadata[game_key]["results_fetched"] = True
@@ -258,6 +256,9 @@ def fetch_results():
             try:
                 console.print(f"  [dim]→ Analyzing prediction accuracy...[/dim]")
                 analysis_data = analyzer.generate_analysis(game_key, game_meta)
+
+                # Mark that we called Anthropic API
+                called_anthropic = True
 
                 # Update metadata with analysis flag
                 metadata[game_key]["analysis_generated"] = True
@@ -300,7 +301,8 @@ def fetch_results():
                 console.print(f"  [red]❌ Error: {error_msg}[/red]")
 
         # Rate limit delay (60 seconds between games, except for last game)
-        if idx < len(games_to_fetch):
+        # Only show countdown if we called Anthropic API
+        if idx < len(games_to_fetch) and called_anthropic:
             # Get next game info
             next_game = games_to_fetch[idx]
             next_teams = next_game["meta"]["teams"]
@@ -350,17 +352,17 @@ def fetch_results():
             console.print(f"  • {error['game']}: {error['error']}")
 
 
-def save_result_to_json(game_date: str, game_key: str, result_data: dict):
+def save_result_to_json(game_date: str, game_key: str, result_data: dict, config: NBAConfig):
     """Save game result to JSON file.
 
     Args:
         game_date: Game date identifier
         game_key: Unique game identifier (e.g., "2025-10-24_tor_mil")
         result_data: Game result dictionary
+        config: NBA configuration object
     """
     # Create results directory structure
-    results_dir = "nba/data/results"
-    date_dir = os.path.join(results_dir, game_date)
+    date_dir = os.path.join(config.results_dir, game_date)
     os.makedirs(date_dir, exist_ok=True)
 
     # Extract filename from game_key (remove date prefix)

@@ -72,11 +72,17 @@ def load_predictions_metadata() -> dict:
                     metadata[game_key] = {
                         "last_predicted": value,
                         "results_fetched": False,
+                        "odds_used": False,  # Old predictions didn't have odds
+                        "odds_source": None,
                         "game_date": None,  # Can't recover from old format
                         "teams": None,
                         "home_team": None,
                         "home_team_abbr": None
                     }
+                    migrated = True
+                elif isinstance(value, dict) and "odds_used" not in value:  # Missing odds fields
+                    value["odds_used"] = False
+                    value["odds_source"] = None
                     migrated = True
 
             # Save migrated version
@@ -277,6 +283,45 @@ def save_prediction_to_markdown(
     import json
     with open(json_filepath, "w", encoding="utf-8") as f:
         json.dump(prediction_data, f, indent=2, ensure_ascii=False)
+
+
+def load_odds_file(game_date: str, team_a: str, team_b: str, home_team: str) -> dict | None:
+    """Load odds file for a game if it exists.
+
+    Args:
+        game_date: Game date in YYYY-MM-DD format
+        team_a: First team name
+        team_b: Second team name
+        home_team: Home team name
+
+    Returns:
+        Odds data dictionary or None if file not found
+    """
+    # Get team abbreviations
+    team_a_abbr = get_team_abbreviation(team_a)
+    team_b_abbr = get_team_abbreviation(team_b)
+
+    # Build filename with home team first (same as predictions)
+    if home_team == team_a:
+        filename = f"{team_a_abbr}_{team_b_abbr}.json"
+    else:
+        filename = f"{team_b_abbr}_{team_a_abbr}.json"
+
+    # Build filepath
+    odds_filepath = os.path.join("nfl/data/odds", game_date, filename)
+
+    # Check if odds file exists
+    if not os.path.exists(odds_filepath):
+        return None
+
+    # Load odds data
+    try:
+        with open(odds_filepath, encoding="utf-8") as f:
+            odds_data = json.load(f)
+        return odds_data
+    except Exception as e:
+        console.print(f"[yellow]⚠ Warning: Could not load odds file: {str(e)}[/yellow]")
+        return None
 
 
 def load_team_profiles(team_a: str, team_b: str) -> tuple[dict, dict]:
@@ -480,6 +525,35 @@ def predict_game():
         console.print(Panel(error_text, border_style="red", padding=(1, 2)))
         return
 
+    # Load betting odds (REQUIRED)
+    console.print()
+    console.print("[cyan]📊 Loading betting odds (required)...[/cyan]")
+    odds_data = load_odds_file(game_date, team_a, team_b, home_team)
+
+    if not odds_data:
+        console.print()
+        team_a_abbr = get_team_abbreviation(team_a)
+        team_b_abbr = get_team_abbreviation(team_b)
+        home_abbr = team_a_abbr if home_team == team_a else team_b_abbr
+        away_abbr = team_b_abbr if home_team == team_a else team_a_abbr
+
+        error_text = "[bold red]ERROR: Betting odds are required[/bold red]\n\n"
+        error_text += "[yellow]Predictions now require odds for accurate analysis.[/yellow]\n\n"
+        error_text += "Please fetch odds first:\n"
+        error_text += "1. Save DraftKings HTML from game page to your desktop\n"
+        error_text += f"2. Run: [cyan]python main.py → NFL → Fetch Odds[/cyan]\n"
+        error_text += f"3. Select the HTML file\n\n"
+        error_text += f"[dim]Expected file: nfl/data/odds/{game_date}/{home_abbr}_{away_abbr}.json[/dim]"
+        console.print(Panel(error_text, border_style="red", padding=(1, 2)))
+        return
+
+    console.print("[green]✓[/green] [dim]Loaded betting odds from DraftKings[/dim]")
+    # Display summary of available odds
+    game_lines_count = len(odds_data.get("game_lines", {}))
+    player_props_count = len(odds_data.get("player_props", []))
+    console.print(f"[dim]  • Game lines: {game_lines_count}[/dim]")
+    console.print(f"[dim]  • Player props: {player_props_count} players[/dim]")
+
     # Generate parlays with spinner using OOP architecture
     console.print()
     with Progress(
@@ -488,7 +562,7 @@ def predict_game():
         console=console
     ) as progress:
         progress.add_task(description="Generating AI parlays with 80%+ confidence...", total=None)
-        result = nfl_sport.predictor.generate_parlays(team_a, team_b, home_team, rankings, profile_a, profile_b)
+        result = nfl_sport.predictor.generate_parlays(team_a, team_b, home_team, rankings, profile_a, profile_b, odds_data)
 
     # Check if API call was successful
     if not result.get("success", False):
@@ -547,6 +621,8 @@ def predict_game():
         metadata[game_key] = {
             "last_predicted": date.today().isoformat(),
             "results_fetched": False,
+            "odds_used": odds_data is not None,
+            "odds_source": "draftkings" if odds_data else None,
             "game_date": game_date,
             "teams": [team_a, team_b],
             "home_team": home_team,

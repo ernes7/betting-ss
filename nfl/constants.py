@@ -8,6 +8,9 @@ from global_constants import (
 # Current NFL season year
 CURRENT_YEAR = 2025
 
+# Fixed bet amount for P&L calculations (in dollars)
+FIXED_BET_AMOUNT = 100
+
 # Rate limiting for Pro-Football-Reference (uses global Sports-Reference rate limits)
 PFR_RATE_LIMIT_CALLS = SPORTS_REFERENCE_RATE_LIMIT_CALLS
 PFR_RATE_LIMIT_PERIOD = SPORTS_REFERENCE_RATE_LIMIT_PERIOD
@@ -41,13 +44,12 @@ TEAM_PROFILE_TABLES = {
 
 # Result tables to extract from boxscore pages
 # These are extracted after a game has been played
+# Note: player_offense is a combined table that will be split into passing/rushing/receiving
 RESULT_TABLES = {
     "scoring": "scoring",
     "game_info": "game_info",
     "team_stats": "team_stats",
-    "passing": "passing_advanced",
-    "rushing": "rushing_advanced",
-    "receiving": "receiving_advanced",
+    "player_offense": "player_offense",  # Combined offensive stats (split later into passing/rushing/receiving)
     "defense": "player_defense",
     "home_starters": "home_starters",
     "away_starters": "vis_starters",
@@ -56,3 +58,36 @@ RESULT_TABLES = {
 # Data folder paths
 DATA_RANKINGS_DIR = "nfl/data/rankings"
 DATA_PROFILES_DIR = "nfl/data/profiles"
+DATA_ODDS_DIR = "nfl/data/odds"
+
+# Odds market types (for DraftKings scraping)
+ODDS_MARKET_TYPES = {
+    # Game lines
+    "game_lines": ["Moneyline", "Spread", "Total"],
+    # Player props - Passing
+    "passing_props": [
+        "Passing Yards Milestones",
+        "Passing Touchdowns Milestones",
+        "Pass Completions Milestones",
+        "Pass Attempts Milestones",
+    ],
+    # Player props - Rushing
+    "rushing_props": [
+        "Rushing Yards Milestones",
+        "Rushing Attempts Milestones",
+        "Rushing + Receiving Yards Milestones",
+    ],
+    # Player props - Receiving
+    "receiving_props": [
+        "Receiving Yards Milestones",
+        "Receptions Milestones",
+    ],
+    # Touchdown scorers
+    "touchdown_props": ["Anytime Touchdown Scorer"],
+    # Defensive props
+    "defensive_props": [
+        "Sacks Milestones",
+        "Tackles + Assists Milestones",
+        "Interceptions Milestones",
+    ],
+}

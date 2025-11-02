@@ -44,3 +44,16 @@ TEAM_ABBR_MAP = {team["abbreviation"]: team["name"] for team in TEAMS}
 
 # Full name to abbreviation mapping
 TEAM_NAME_TO_ABBR = {team["name"]: team["abbreviation"] for team in TEAMS}
+
+# DraftKings abbreviation to PFR abbreviation mapping
+# DraftKings uses standard abbreviations, PFR uses custom ones
+DK_TO_PFR_ABBR = {team["abbreviation"]: team["pfr_abbr"] for team in TEAMS}
+
+# PFR abbreviation to DraftKings abbreviation mapping (reverse)
+PFR_TO_DK_ABBR = {team["pfr_abbr"]: team["abbreviation"] for team in TEAMS}
+
+# DraftKings abbreviation to full name mapping
+DK_ABBR_TO_NAME = {team["abbreviation"]: team["name"] for team in TEAMS}
+
+# PFR abbreviation to full name mapping
+PFR_ABBR_TO_NAME = {team["pfr_abbr"]: team["name"] for team in TEAMS}

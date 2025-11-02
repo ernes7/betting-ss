@@ -64,12 +64,20 @@ class NFLConfig(SportConfig):
         return "nfl/data/predictions"
 
     @property
+    def predictions_ev_dir(self) -> str:
+        return "nfl/data/predictions_ev"
+
+    @property
     def results_dir(self) -> str:
         return "nfl/data/results"
 
     @property
     def analysis_dir(self) -> str:
         return "nfl/data/analysis"
+
+    @property
+    def analysis_ev_dir(self) -> str:
+        return "nfl/data/analysis_ev"
 
     @property
     def prompt_components(self) -> NFLPromptComponents:

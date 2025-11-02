@@ -51,16 +51,19 @@ class BaseAnalyzer(ABC):
         prediction_data = self._load_prediction(game_key, game_meta)
         result_data = self._load_result(game_key, game_meta)
 
-        # 2. Build sport-specific analysis prompt
+        # 2. Validate result data has required tables
+        self._validate_result_tables(result_data)
+
+        # 3. Build sport-specific analysis prompt
         prompt = self._build_analysis_prompt(prediction_data, result_data)
 
-        # 3. Call Claude API
+        # 4. Call Claude API
         analysis_text, cost, tokens = self._call_claude_api(prompt)
 
-        # 4. Parse Claude's JSON response
+        # 5. Parse Claude's JSON response
         analysis_data = self._parse_analysis_response(analysis_text)
 
-        # 5. Add metadata
+        # 6. Add metadata
         analysis_data.update({
             "sport": self.config.sport_name,
             "game_date": game_meta.get("game_date"),
@@ -77,7 +80,7 @@ class BaseAnalyzer(ABC):
             "tokens": tokens
         })
 
-        # 6. Save analysis to file
+        # 7. Save analysis to file
         self._save_analysis(game_key, game_meta, analysis_data)
 
         return analysis_data
@@ -159,6 +162,30 @@ class BaseAnalyzer(ABC):
             filename = game_key + ".json"
 
         return os.path.join(self.config.results_dir, game_date, filename)
+
+    def _validate_result_tables(self, result_data: dict):
+        """Validate that result data contains all required tables.
+
+        Args:
+            result_data: Result data dictionary with tables
+
+        Raises:
+            Exception: If any required table is missing from result data
+        """
+        required_tables = ["scoring", "passing", "rushing", "receiving", "defense"]
+        missing_tables = []
+
+        tables = result_data.get("tables", {})
+        for table_name in required_tables:
+            if table_name not in tables:
+                missing_tables.append(table_name)
+
+        if missing_tables:
+            raise Exception(
+                f"Result data is missing required tables: {', '.join(missing_tables)}. "
+                f"Cannot perform analysis without complete data. "
+                f"Available tables: {', '.join(tables.keys())}"
+            )
 
     @abstractmethod
     def _build_analysis_prompt(self, prediction_data: dict, result_data: dict) -> str:
@@ -332,19 +359,13 @@ class BaseAnalyzer(ABC):
             game_meta: Game metadata
             analysis_data: Analysis dictionary to save
         """
-        # Create analysis directory structure
-        game_date = game_meta.get("game_date")
-        date_dir = os.path.join(self.config.analysis_dir, game_date)
+        # Use the overrideable _get_analysis_path() method
+        # This allows subclasses (like NFLEVAnalyzer) to customize the save location
+        filepath = self._get_analysis_path(game_key, game_meta)
+
+        # Create directory structure
+        date_dir = os.path.dirname(filepath)
         os.makedirs(date_dir, exist_ok=True)
-
-        # Extract filename from game_key
-        parts = game_key.split("_")
-        if parts[0] == game_date:
-            filename = "_".join(parts[1:]) + ".json"
-        else:
-            filename = game_key + ".json"
-
-        filepath = os.path.join(date_dir, filename)
 
         # Save to JSON file
         with open(filepath, "w", encoding="utf-8") as f:
