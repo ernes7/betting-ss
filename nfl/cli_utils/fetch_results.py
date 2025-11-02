@@ -1,59 +1,30 @@
-"""Fetch results CLI commands for NFL."""
+"""Fetch results CLI commands for NFL - Refactored with services."""
 
-import json
-import os
 import time
 import select
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import defaultdict
 
 import inquirer
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
-from tqdm import tqdm
+
+# Import shared services
+from shared.services import MetadataService, PredictionsMetadataService
+from shared.repositories import ResultsRepository
+from shared.utils.console_utils import print_header, print_cancelled
+from shared.config import get_metadata_path
 
 from nfl.nfl_config import NFLConfig
 from nfl.nfl_results_fetcher import NFLResultsFetcher
 from nfl.nfl_analyzer import NFLAnalyzer
 
-# Initialize Rich console
+# Initialize services
 console = Console()
-
-# Constants
-PREDICTIONS_METADATA_FILE = "nfl/data/predictions/.metadata.json"
-
-
-def load_predictions_metadata() -> dict:
-    """Load predictions metadata file.
-
-    Returns:
-        Dictionary mapping game keys to prediction metadata
-    """
-    if os.path.exists(PREDICTIONS_METADATA_FILE):
-        try:
-            with open(PREDICTIONS_METADATA_FILE) as f:
-                return json.load(f)
-        except Exception as e:
-            console.print(f"[yellow]Warning: Could not load predictions metadata: {str(e)}[/yellow]")
-            return {}
-    return {}
-
-
-def save_predictions_metadata(metadata: dict):
-    """Save predictions metadata file.
-
-    Args:
-        metadata: Updated metadata dictionary
-    """
-    os.makedirs(os.path.dirname(PREDICTIONS_METADATA_FILE), exist_ok=True)
-    try:
-        with open(PREDICTIONS_METADATA_FILE, "w") as f:
-            json.dump(metadata, f, indent=2)
-    except Exception as e:
-        console.print(f"[yellow]Warning: Could not save predictions metadata: {str(e)}[/yellow]")
+predictions_metadata_service = PredictionsMetadataService(get_metadata_path("nfl", "predictions"))
+ev_predictions_metadata_service = MetadataService(get_metadata_path("nfl", "predictions_ev"))
+results_repo = ResultsRepository("nfl")
 
 
 def wait_with_countdown(seconds: int, next_game_info: str, current: int, total: int):
@@ -117,14 +88,10 @@ def fetch_results():
     7. Update predictions metadata: results_fetched = true
     8. Display summary (success/failed counts)
     """
-    console.print()
-    console.print(Panel.fit(
-        "[bold cyan]📊 NFL RESULTS FETCHER 📊[/bold cyan]",
-        border_style="cyan"
-    ))
+    print_header("📊 NFL RESULTS FETCHER 📊")
 
-    # Load predictions metadata
-    metadata = load_predictions_metadata()
+    # Load predictions metadata using service
+    metadata = predictions_metadata_service.load_metadata()
 
     if not metadata:
         console.print()
@@ -193,7 +160,7 @@ def fetch_results():
     answers = inquirer.prompt(questions)
 
     if not answers or not answers["proceed"]:
-        console.print("[yellow]Fetch cancelled.[/yellow]")
+        print_cancelled()
         return
 
     # Initialize fetcher, analyzer, and config
@@ -227,9 +194,6 @@ def fetch_results():
         matchup = f"{teams[0]} vs {teams[1]}"
         console.print(f"\n[bold cyan]━━━ Game {idx}/{len(games_to_fetch)}: {matchup} ━━━[/bold cyan]")
 
-        # Track if we called Anthropic API for this game
-        called_anthropic = False
-
         try:
             # Build boxscore URL
             boxscore_url = config.build_boxscore_url(game_date, home_team_abbr)
@@ -241,13 +205,22 @@ def fetch_results():
             # Add game_date to result (in case it's not already there)
             result_data["game_date"] = game_date
 
-            # Save result to JSON
-            save_result_to_json(game_date, game_key, result_data, config)
+            # Save result using repository
+            # Extract team abbreviations from game_key for save
+            # game_key format: "w8_los_angeles_chargers_minnesota_vikings" or "{date}_team1_team2"
+            parts = game_key.split("_")
+            if parts[0] == game_date:
+                # Remove date prefix
+                filename = "_".join(parts[1:])
+            else:
+                filename = game_key
 
-            # Update metadata
+            results_repo.save_result(game_date, filename, result_data)
+
+            # Update metadata using service
             metadata[game_key]["results_fetched"] = True
             metadata[game_key]["results_fetched_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            save_predictions_metadata(metadata)
+            predictions_metadata_service.save_metadata(metadata)
 
             success_count += 1
             console.print(f"  [green]✅ Result: {result_data['final_score']['away']}-{result_data['final_score']['home']} ({result_data.get('winner', 'Unknown')} wins)[/green]")
@@ -307,34 +280,6 @@ def fetch_results():
             console.print(f"  • {error['game']}: {error['error']}")
 
 
-def save_result_to_json(game_date: str, game_key: str, result_data: dict, config: NFLConfig):
-    """Save game result to JSON file.
-
-    Args:
-        game_date: Game date/week identifier
-        game_key: Unique game identifier (e.g., "w8_los_angeles_chargers_minnesota_vikings")
-        result_data: Game result dictionary
-        config: NFL configuration object
-    """
-    # Create results directory structure
-    date_dir = os.path.join(config.results_dir, game_date)
-    os.makedirs(date_dir, exist_ok=True)
-
-    # Extract filename from game_key (remove date prefix)
-    # e.g., "w8_los_angeles_chargers_minnesota_vikings" -> "los_angeles_chargers_minnesota_vikings"
-    parts = game_key.split("_")
-    if parts[0] == game_date:
-        filename = "_".join(parts[1:]) + ".json"
-    else:
-        filename = game_key + ".json"
-
-    filepath = os.path.join(date_dir, filename)
-
-    # Save to JSON file
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(result_data, f, indent=2, ensure_ascii=False)
-
-
 def fetch_ev_results():
     """Fetch results for EV+ Singles predictions and calculate P&L.
 
@@ -351,35 +296,10 @@ def fetch_ev_results():
     """
     from nfl.constants import FIXED_BET_AMOUNT
 
-    # Load EV predictions metadata
-    EV_PREDICTIONS_METADATA_FILE = "nfl/data/predictions_ev/.metadata.json"
+    print_header("💰 NFL EV+ RESULTS & P/L TRACKER 💰")
 
-    def load_ev_metadata():
-        if os.path.exists(EV_PREDICTIONS_METADATA_FILE):
-            try:
-                with open(EV_PREDICTIONS_METADATA_FILE) as f:
-                    return json.load(f)
-            except Exception as e:
-                console.print(f"[yellow]Warning: Could not load EV predictions metadata: {str(e)}[/yellow]")
-                return {}
-        return {}
-
-    def save_ev_metadata(metadata):
-        os.makedirs(os.path.dirname(EV_PREDICTIONS_METADATA_FILE), exist_ok=True)
-        try:
-            with open(EV_PREDICTIONS_METADATA_FILE, "w") as f:
-                json.dump(metadata, f, indent=2)
-        except Exception as e:
-            console.print(f"[yellow]Warning: Could not save EV predictions metadata: {str(e)}[/yellow]")
-
-    console.print()
-    console.print(Panel.fit(
-        "[bold cyan]💰 NFL EV+ RESULTS & P/L TRACKER 💰[/bold cyan]",
-        border_style="cyan"
-    ))
-
-    # Load metadata
-    metadata = load_ev_metadata()
+    # Load metadata using service
+    metadata = ev_predictions_metadata_service.load_metadata()
 
     if not metadata:
         console.print()
@@ -442,7 +362,7 @@ def fetch_ev_results():
     answers = inquirer.prompt(questions)
 
     if not answers or not answers["proceed"]:
-        console.print("[yellow]Fetch cancelled.[/yellow]")
+        print_cancelled()
         return
 
     # Initialize fetcher and analyzer
@@ -482,14 +402,21 @@ def fetch_ev_results():
                     failed_count += 1
                     continue
 
-                # Save results to shared results directory
+                # Save results using repository
                 console.print("  ├─ Saving game results...", style="dim")
-                save_result_to_json(game_date, game_key, result_data, config)
+                # Extract filename from game_key
+                parts = game_key.split("_")
+                if parts[0] == game_date:
+                    filename = "_".join(parts[1:])
+                else:
+                    filename = game_key
 
-                # Update metadata - results fetched
+                results_repo.save_result(game_date, filename, result_data)
+
+                # Update metadata using service
                 metadata[game_key]["results_fetched"] = True
                 metadata[game_key]["results_fetched_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                save_ev_metadata(metadata)
+                ev_predictions_metadata_service.save_metadata(metadata)
             else:
                 console.print("  ├─ [dim]Results already fetched, skipping...[/dim]")
 
@@ -501,10 +428,10 @@ def fetch_ev_results():
                     analysis_data = ev_analyzer.generate_analysis(game_key, game_meta)
                     anthropic_api_called = True
 
-                    # Update metadata - analysis generated
+                    # Update metadata using service
                     metadata[game_key]["analysis_generated"] = True
                     metadata[game_key]["analysis_generated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    save_ev_metadata(metadata)
+                    ev_predictions_metadata_service.save_metadata(metadata)
 
                     # Display P/L summary
                     summary = analysis_data.get('summary', {})

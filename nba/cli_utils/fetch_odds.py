@@ -1,4 +1,4 @@
-"""Fetch odds CLI commands for NFL - Refactored with services."""
+"""Fetch odds CLI commands for NBA - Refactored with services."""
 
 from datetime import datetime
 from pathlib import Path
@@ -14,14 +14,14 @@ from shared.utils.console_utils import print_header, print_success, print_cancel
 from shared.utils.web_scraper import WebScraper
 from shared.config import get_metadata_path
 
-# Import NFL specific
-from nfl.odds_scraper import NFLOddsScraper
-from nfl.teams import DK_TO_PFR_ABBR
+# Import NBA specific
+from nba.odds_scraper import NBAOddsScraper
+from nba.teams import DK_TO_PBR_ABBR
 
 # Initialize services
 console = Console()
-odds_metadata_service = MetadataService(get_metadata_path("nfl", "odds"))
-odds_repo = OddsRepository("nfl")
+odds_metadata_service = MetadataService(get_metadata_path("nba", "odds"))
+odds_repo = OddsRepository("nba")
 
 
 def fetch_odds_command():
@@ -30,11 +30,11 @@ def fetch_odds_command():
     Workflow:
     1. Prompt for DraftKings game URL
     2. Fetch HTML using WebScraper (Playwright)
-    3. Extract odds using NFLOddsScraper
+    3. Extract odds using NBAOddsScraper
     4. Display summary of extracted odds
-    5. Save to nfl/data/odds/{date}/{home_abbr}_{away_abbr}.json
+    5. Save to nba/data/odds/{date}/{home_abbr}_{away_abbr}.json
     """
-    print_header("🎲 NFL ODDS FETCHER 🎲")
+    print_header("🏀 NBA ODDS FETCHER 🏀")
     console.print()
     console.print("[dim]Fetches betting odds directly from DraftKings URL[/dim]")
     console.print()
@@ -68,7 +68,7 @@ def fetch_odds_command():
         print_success("Page fetched successfully")
 
         # Save HTML to temp file for odds scraper
-        temp_html_path = Path("nfl/data/odds") / "temp_dk_page.html"
+        temp_html_path = Path("nba/data/odds") / "temp_dk_page.html"
         temp_html_path.parent.mkdir(parents=True, exist_ok=True)
         temp_html_path.write_text(html_content, encoding='utf-8')
 
@@ -76,7 +76,7 @@ def fetch_odds_command():
         console.print()
         print_info("📊 Extracting odds from page...")
 
-        odds_scraper = NFLOddsScraper()
+        odds_scraper = NBAOddsScraper()
         odds_data = odds_scraper.extract_odds(str(temp_html_path))
 
         # Clean up temp file
@@ -301,7 +301,7 @@ def save_odds_to_json(odds_data: dict):
     odds_repo.save_odds(date_folder, pfr_away_abbr, pfr_home_abbr, odds_data)
 
     # Update metadata using service
-    filepath = f"nfl/data/odds/{date_folder}/{pfr_home_abbr}_{pfr_away_abbr}.json"
+    filepath = f"nba/data/odds/{date_folder}/{pfr_home_abbr}_{pfr_away_abbr}.json"
     metadata[game_key] = {
         "fetched_at": datetime.now().isoformat(),
         "game_date": date_folder,

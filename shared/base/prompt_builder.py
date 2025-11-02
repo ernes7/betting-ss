@@ -240,6 +240,18 @@ REQUIREMENTS:
 - Only use healthy players with consistent stats
 {sport_components.injury_instructions}
 - Prioritize props with large sample sizes (8+ games)
+- BET TYPE DIVERSITY REQUIREMENT:
+  * Include variety across bet categories when possible
+  * At least 1 non-yardage bet if +3% EV exists (moneyline, spread, total, TD, receptions, attempts)
+  * Maximum 3 yardage props (passing/rushing/receiving yards combined) out of 5 total bets
+  * Prioritize different players and bet types over stacking similar bets
+  * If all 5 highest EV bets are yardage props, explain why other bet types don't meet +3% threshold
+
+EVALUATING DIFFERENT BET TYPES:
+- Moneyline/Spread: Estimate team win probability from power ratings, scoring differential, home/away splits, injury impact
+- Anytime TD: Use TD rate per game, red zone touches, goal-line role, opponent red zone defense rank
+- Receptions/Attempts: Volume-based (more predictable than yardage), check target share, carry share, usage rate
+- Game Totals: Estimate team totals based on offensive/defensive efficiency, pace of play, weather conditions
 
 DATA:
 {data_context}

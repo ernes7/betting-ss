@@ -10,7 +10,9 @@ from rich.text import Text
 
 from nfl.cli_utils.predict import predict_game as nfl_predict_game
 from nfl.cli_utils.predict_ev_singles import predict_ev_singles as nfl_predict_ev_singles
+from nfl.cli_utils.fetch_odds import fetch_odds_command as nfl_fetch_odds
 from nba.cli_utils.predict import predict_game as nba_predict_game
+from nba.cli_utils.fetch_odds import fetch_odds_command as nba_fetch_odds
 from nfl.cli_utils.fetch_results import fetch_results as nfl_fetch_results, fetch_ev_results as nfl_fetch_ev_results
 from nba.cli_utils.fetch_results import fetch_results as nba_fetch_results
 
@@ -24,6 +26,7 @@ SPORTS = {
         "emoji": "🏈",
         "predict_fn": nfl_predict_game,
         "predict_ev_fn": nfl_predict_ev_singles,
+        "fetch_odds_fn": nfl_fetch_odds,
         "fetch_results_fn": nfl_fetch_results,
         "fetch_ev_results_fn": nfl_fetch_ev_results,
     },
@@ -32,6 +35,7 @@ SPORTS = {
         "emoji": "🏀",
         "predict_fn": nba_predict_game,
         "predict_ev_fn": None,  # NBA doesn't have EV singles yet
+        "fetch_odds_fn": nba_fetch_odds,
         "fetch_results_fn": nba_fetch_results,
         "fetch_ev_results_fn": None,  # NBA doesn't have EV singles yet
     },
@@ -89,21 +93,29 @@ def display_menu(sport_config):
         menu_text.append("   ", style="dim")
         menu_text.append("[Expected Value analysis with Kelly Criterion]\n", style="dim")
         menu_text.append("3. ", style="bold yellow")
-        menu_text.append("Fetch Results (Parlays)\n", style="white")
+        menu_text.append("Fetch Odds\n", style="white")
+        menu_text.append("   ", style="dim")
+        menu_text.append("[Fetch betting odds from DraftKings URL]\n", style="dim")
         menu_text.append("4. ", style="bold yellow")
+        menu_text.append("Fetch Results (Parlays)\n", style="white")
+        menu_text.append("5. ", style="bold yellow")
         menu_text.append("Fetch Results (EV+ Singles)\n", style="white")
         menu_text.append("   ", style="dim")
         menu_text.append("[Calculate P/L with fixed bet amount]\n", style="dim")
-        menu_text.append("5. ", style="bold yellow")
-        menu_text.append("Change Sport\n", style="white")
         menu_text.append("6. ", style="bold yellow")
+        menu_text.append("Change Sport\n", style="white")
+        menu_text.append("7. ", style="bold yellow")
         menu_text.append("Exit\n", style="white")
     else:
         menu_text.append("2. ", style="bold yellow")
-        menu_text.append("Fetch Results\n", style="white")
+        menu_text.append("Fetch Odds\n", style="white")
+        menu_text.append("   ", style="dim")
+        menu_text.append("[Fetch betting odds from DraftKings URL]\n", style="dim")
         menu_text.append("3. ", style="bold yellow")
-        menu_text.append("Change Sport\n", style="white")
+        menu_text.append("Fetch Results\n", style="white")
         menu_text.append("4. ", style="bold yellow")
+        menu_text.append("Change Sport\n", style="white")
+        menu_text.append("5. ", style="bold yellow")
         menu_text.append("Exit\n", style="white")
 
     # Display in panel
@@ -125,9 +137,9 @@ def main():
 
         # Dynamic choices based on sport features
         if current_sport.get("predict_ev_fn"):
-            choices = ["1", "2", "3", "4", "5", "6"]
+            choices = ["1", "2", "3", "4", "5", "6", "7"]
         else:
-            choices = ["1", "2", "3", "4"]
+            choices = ["1", "2", "3", "4", "5"]
 
         # Get user choice with styled prompt
         choice = Prompt.ask(
@@ -148,12 +160,23 @@ def main():
                 current_sport["predict_ev_fn"]()
                 Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
             else:
-                # NBA: Fetch Results
-                current_sport["fetch_results_fn"]()
+                # NBA: Fetch Odds
+                current_sport["fetch_odds_fn"]()
                 Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
 
         elif choice == "3":
             # Handle option 3 based on sport
+            if current_sport.get("predict_ev_fn"):
+                # NFL: Fetch Odds
+                current_sport["fetch_odds_fn"]()
+                Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
+            else:
+                # NBA: Fetch Results
+                current_sport["fetch_results_fn"]()
+                Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
+
+        elif choice == "4":
+            # Handle option 4 based on sport
             if current_sport.get("predict_ev_fn"):
                 # NFL: Fetch Results (Parlays)
                 current_sport["fetch_results_fn"]()
@@ -162,8 +185,8 @@ def main():
                 # NBA: Change Sport
                 current_sport = select_sport()
 
-        elif choice == "4":
-            # Handle option 4 based on sport
+        elif choice == "5":
+            # Handle option 5 based on sport
             if current_sport.get("predict_ev_fn"):
                 # NFL: Fetch Results (EV+ Singles)
                 current_sport["fetch_ev_results_fn"]()
@@ -173,11 +196,11 @@ def main():
                 console.print("\n[bold green]Exiting... Good luck with your bets! 🎰[/bold green]\n")
                 break
 
-        elif choice == "5":
+        elif choice == "6":
             # NFL only: Change Sport
             current_sport = select_sport()
 
-        elif choice == "6":
+        elif choice == "7":
             # NFL only: Exit
             console.print("\n[bold green]Exiting... Good luck with your bets! 🎰[/bold green]\n")
             break

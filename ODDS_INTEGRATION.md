@@ -38,58 +38,79 @@ PFR_ABBR_TO_NAME = {...}  # PFR abbr -> full name
 - Automatic conversion ensures consistency
 
 ### 3. Odds Fetching (nfl/cli_utils/fetch_odds.py)
-Updated to use new naming convention and track metadata:
+Now uses **OddsRepository** and **MetadataService** from the clean architecture:
 
 ```python
+# Initialize services (at module level)
+from shared.services import MetadataService
+from shared.repositories import OddsRepository
+from shared.config import get_metadata_path
+
+odds_metadata_service = MetadataService(get_metadata_path("nfl", "odds"))
+odds_repo = OddsRepository("nfl")
+
 def save_odds_to_json(odds_data: dict):
     # Convert DraftKings abbreviations to PFR
-    pfr_away_abbr = DK_TO_PFR_ABBR[dk_away_abbr].lower()
-    pfr_home_abbr = DK_TO_PFR_ABBR[dk_home_abbr].lower()
+    pfr_away_abbr = DK_TO_PFR_ABBR[dk_away_abbr]
+    pfr_home_abbr = DK_TO_PFR_ABBR[dk_home_abbr]
 
-    # Save with home_away format (matches predictions)
-    filename = f"{pfr_home_abbr}_{pfr_away_abbr}.json"
+    # Save using repository (handles paths automatically)
+    odds_repo.save_odds(date_folder, pfr_away_abbr, pfr_home_abbr, odds_data)
 
-    # Update metadata for tracking
+    # Update metadata using service
+    metadata = odds_metadata_service.load_metadata()
     metadata[game_key] = {
         "fetched_at": datetime.now().isoformat(),
         "game_date": date_folder,
         "home_team_abbr": pfr_home_abbr,
         "away_team_abbr": pfr_away_abbr,
         "source": "draftkings",
-        "filepath": str(filepath)
+        "filepath": f"nfl/data/odds/{date_folder}/{pfr_home_abbr}_{pfr_away_abbr}.json"
     }
+    odds_metadata_service.save_metadata(metadata)
 ```
 
 ### 4. Prediction Pipeline (nfl/cli_utils/predict.py)
-Added odds loading and display:
+Now uses **OddsService** from the clean architecture:
 
 ```python
-def load_odds_file(game_date, team_a, team_b, home_team) -> dict | None:
-    """Load odds file using same naming convention as predictions."""
-    # Build filename with home team first
-    filename = f"{home_abbr}_{away_abbr}.json"
-    odds_filepath = os.path.join("nfl/data/odds", game_date, filename)
-    # Load and return odds data
+# Initialize services (at module level)
+from shared.services import OddsService
+
+odds_service = OddsService("nfl")
 ```
 
 **Integration in predict_game():**
 ```python
 # After loading profiles, before generating predictions
-odds_data = load_odds_file(game_date, team_a, team_b, home_team)
+# OddsService automatically handles path construction and loading
+odds_data = odds_service.load_odds_for_game(game_date, team_a_abbr, team_b_abbr, home_abbr)
 
 if odds_data:
-    console.print("✓ Loaded betting odds from DraftKings")
+    print_success("Loaded betting odds from DraftKings")
     # Display summary
+    game_lines_count = len(odds_data.get("game_lines", {}))
+    player_props_count = len(odds_data.get("player_props", []))
+    console.print(f"[dim]  • Game lines: {game_lines_count}[/dim]")
+    console.print(f"[dim]  • Player props: {player_props_count} players[/dim]")
 else:
-    console.print("⚠ No odds file found - predictions will be based on stats only")
+    # Show error panel - odds are now REQUIRED
+    console.print(Panel(error_text, border_style="red", padding=(1, 2)))
+    return
 
 # Pass odds to predictor
 result = nfl_sport.predictor.generate_parlays(
     team_a, team_b, home_team,
     rankings, profile_a, profile_b,
-    odds_data  # <- NEW: odds passed to AI
+    odds_data  # <- Odds passed to AI for informed predictions
 )
 ```
+
+**Benefits of OddsService:**
+- Automatic path construction using paths_config
+- Tries multiple file name combinations (home_away and away_home)
+- Consistent error handling
+- Same interface across NFL and NBA
 
 ### 5. Predictor Enhancement (shared/base/predictor.py)
 Updated to accept and forward odds:
@@ -130,7 +151,43 @@ def build_prompt(
     # - Compare odds to actual stats to identify value opportunities
 ```
 
-### 7. Metadata Tracking
+### 7. Clean Architecture Integration
+
+The odds system now uses the **service layer** and **repository pattern** for clean separation of concerns:
+
+**Service Layer** (`shared/services/`):
+- **OddsService**: Handles odds loading logic
+  - Automatically constructs file paths
+  - Tries multiple naming patterns
+  - Returns None if odds not found
+  - Same interface for all sports
+
+- **MetadataService**: Handles all metadata operations
+  - Load/save metadata files
+  - Consistent error handling
+  - Used for odds, predictions, profiles, rankings
+
+**Repository Layer** (`shared/repositories/`):
+- **OddsRepository**: Handles odds data persistence
+  - Save odds to JSON files
+  - Load odds from JSON files
+  - Automatic directory creation
+  - Sport-agnostic implementation
+
+**Configuration Layer** (`shared/config/`):
+- **paths_config**: Centralized path templates
+  - All file paths defined in one place
+  - Easy to change directory structure
+  - Type-safe path construction
+
+**Benefits:**
+- No manual path construction in CLI files
+- Easy to swap storage (JSON → Database)
+- Consistent behavior across all sports
+- Services are easily testable (mockable)
+- Follows SOLID principles
+
+### 8. Metadata Tracking
 **Odds Metadata** (`nfl/data/odds/.metadata.json`):
 ```json
 {

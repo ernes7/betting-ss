@@ -1,144 +1,82 @@
-"""EV+ Singles prediction CLI commands for NFL."""
+"""EV+ Singles prediction CLI commands for NFL - Refactored with services."""
 
-import json
 import os
+import re
+import inquirer
 from datetime import date, datetime
 from pathlib import Path
 
-import inquirer
-from rich.console import Console
+# Import shared services and utilities
+from shared.services import (
+    create_team_service_for_sport,
+    MetadataService,
+    PredictionsMetadataService,
+    ProfileService,
+    OddsService
+)
+from shared.repositories import PredictionRepository, OddsRepository
+from shared.utils.console_utils import (
+    print_header,
+    print_success,
+    print_error,
+    print_info,
+    print_warning,
+    print_cost_info,
+    print_cancelled,
+    console
+)
+from shared.utils.validation_utils import is_valid_inquirer_date
+from shared.config import get_metadata_path, get_file_path
+
+# Import sport factory and scrapers
+from shared.factory import SportFactory
+import shared.register_sports
+from nfl.odds_scraper import NFLOddsScraper
+from shared.utils.web_scraper import WebScraper
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-# Import sport factory
-from shared.factory import SportFactory
-import shared.register_sports
-
-from nfl.teams import TEAMS, TEAM_NAMES
-from nfl.odds_scraper import NFLOddsScraper
-from shared.utils.web_scraper import WebScraper
-
-# Create NFL sport instance
+# Initialize services
 nfl_sport = SportFactory.create("nfl")
-
-# Initialize Rich console
-console = Console()
-
-# Metadata file paths
-PREDICTIONS_EV_METADATA_FILE = "nfl/data/predictions_ev/.metadata.json"
-
-
-def load_predictions_ev_metadata() -> dict:
-    """Load EV predictions metadata file."""
-    if os.path.exists(PREDICTIONS_EV_METADATA_FILE):
-        try:
-            with open(PREDICTIONS_EV_METADATA_FILE) as f:
-                return json.load(f)
-        except Exception as e:
-            console.print(f"[yellow]Warning: Could not load EV metadata: {str(e)}[/yellow]")
-            return {}
-    return {}
+team_service = create_team_service_for_sport("nfl")
+predictions_ev_metadata_service = PredictionsMetadataService(get_metadata_path("nfl", "predictions_ev"))
+profile_metadata_service = MetadataService(get_metadata_path("nfl", "profiles"))
+profile_service = ProfileService("nfl", nfl_sport.scraper, profile_metadata_service)
+odds_service = OddsService("nfl")
+prediction_repo = PredictionRepository("nfl", prediction_type="predictions_ev")
+odds_repo = OddsRepository("nfl")
 
 
-def save_predictions_ev_metadata(metadata: dict):
-    """Save EV predictions metadata file."""
-    os.makedirs(os.path.dirname(PREDICTIONS_EV_METADATA_FILE), exist_ok=True)
-    try:
-        with open(PREDICTIONS_EV_METADATA_FILE, "w") as f:
-            json.dump(metadata, f, indent=2)
-    except Exception as e:
-        console.print(f"[yellow]Warning: Could not save EV metadata: {str(e)}[/yellow]")
-
-
-def was_ev_predicted_today(game_date: str, team_a: str, team_b: str, home_team: str) -> tuple[bool, str]:
-    """Check if game already has EV prediction today.
-
-    Returns:
-        (was_predicted: bool, filepath: str)
-    """
-    metadata = load_predictions_ev_metadata()
-    today = date.today().isoformat()
-
-    team_a_abbr = get_team_abbreviation(team_a)
-    team_b_abbr = get_team_abbreviation(team_b)
-
-    if home_team == team_a:
-        game_key = f"{game_date}_{team_a_abbr}_{team_b_abbr}"
-    else:
-        game_key = f"{game_date}_{team_b_abbr}_{team_a_abbr}"
-
-    was_predicted = metadata.get(game_key, {}).get("last_predicted") == today
-
-    filename = f"{team_a_abbr}_{team_b_abbr}.md" if home_team == team_a else f"{team_b_abbr}_{team_a_abbr}.md"
-    filepath = os.path.join("nfl/data/predictions_ev", game_date, filename)
-
-    return was_predicted, filepath
-
-
-def select_team(prompt_text):
-    """Display team list with arrow key navigation."""
-    questions = [
-        inquirer.List("team", message=prompt_text, choices=TEAM_NAMES)
-    ]
-    answers = inquirer.prompt(questions)
-    return answers["team"] if answers else None
-
-
-def get_team_abbreviation(team_name: str) -> str:
-    """Get team abbreviation from team name."""
-    for team in TEAMS:
-        if team["name"] == team_name:
-            return team["abbreviation"].lower()
-    return team_name.lower().replace(" ", "_")
-
-
-def load_odds_file(game_date: str, team_a: str, team_b: str, home_team: str) -> dict | None:
-    """Load odds file for a game."""
-    team_a_abbr = get_team_abbreviation(team_a)
-    team_b_abbr = get_team_abbreviation(team_b)
-
-    if home_team == team_a:
-        filename = f"{team_a_abbr}_{team_b_abbr}.json"
-    else:
-        filename = f"{team_b_abbr}_{team_a_abbr}.json"
-
-    odds_filepath = os.path.join("nfl/data/odds", game_date, filename)
-
-    if not os.path.exists(odds_filepath):
-        return None
-
-    try:
-        with open(odds_filepath, encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as e:
-        console.print(f"[yellow]⚠ Warning: Could not load odds: {str(e)}[/yellow]")
-        return None
-
-
-def fetch_and_save_odds_from_url(url: str, game_date: str, team_a: str, team_b: str, home_team: str) -> dict | None:
+def fetch_and_save_odds_from_url(
+    url: str,
+    game_date: str,
+    team_a_abbr: str,
+    team_b_abbr: str,
+    home_abbr: str
+) -> dict | None:
     """Fetch DraftKings HTML from URL and extract odds.
 
     Args:
         url: DraftKings game URL
         game_date: Game date in YYYY-MM-DD format
-        team_a: First team name
-        team_b: Second team name
-        home_team: Home team name
+        team_a_abbr: First team abbreviation
+        team_b_abbr: Second team abbreviation
+        home_abbr: Home team abbreviation
 
     Returns:
         Odds dictionary if successful, None otherwise
     """
     try:
-        console.print("\n[cyan]🌐 Fetching DraftKings page...[/cyan]")
+        print_info("🌐 Fetching DraftKings page...")
 
         # Fetch HTML using Playwright
         scraper = WebScraper(headless=True, timeout=30000)
         with scraper.launch() as page:
-            scraper.navigate_and_wait(page, url, wait_time=3000)  # Wait 3s for JS to load
+            scraper.navigate_and_wait(page, url, wait_time=3000)
             html_content = page.content()
 
-        console.print("[green]✓[/green] Page fetched successfully")
+        print_success("Page fetched successfully")
 
         # Save HTML to temp file for odds scraper
         temp_html_path = Path("nfl/data/odds") / "temp_dk_page.html"
@@ -146,36 +84,25 @@ def fetch_and_save_odds_from_url(url: str, game_date: str, team_a: str, team_b: 
         temp_html_path.write_text(html_content, encoding='utf-8')
 
         # Extract odds using existing scraper
-        console.print("[cyan]📊 Extracting odds from page...[/cyan]")
+        print_info("📊 Extracting odds from page...")
         odds_scraper = NFLOddsScraper()
         odds_data = odds_scraper.extract_odds(str(temp_html_path))
 
         # Clean up temp file
         temp_html_path.unlink()
 
-        # Save odds to proper location
-        team_a_abbr = get_team_abbreviation(team_a)
-        team_b_abbr = get_team_abbreviation(team_b)
+        # Save odds using repository
+        # Determine away/home order
+        away_abbr = team_a_abbr if team_a_abbr != home_abbr else team_b_abbr
+        odds_repo.save_odds(game_date, away_abbr, home_abbr, odds_data)
 
-        if home_team == team_a:
-            filename = f"{team_a_abbr}_{team_b_abbr}.json"
-        else:
-            filename = f"{team_b_abbr}_{team_a_abbr}.json"
-
-        odds_dir = Path("nfl/data/odds") / game_date
-        odds_dir.mkdir(parents=True, exist_ok=True)
-        odds_filepath = odds_dir / filename
-
-        with open(odds_filepath, 'w', encoding='utf-8') as f:
-            json.dump(odds_data, f, indent=2)
-
-        console.print(f"[green]✓[/green] Odds saved to {odds_filepath}")
+        print_success(f"Odds saved successfully")
 
         return odds_data
 
     except Exception as e:
-        console.print(f"[bold red]✗ Error fetching odds from URL:[/bold red] {str(e)}")
-        console.print("[yellow]Please check the URL and try again, or use the fetch-odds command with a saved HTML file.[/yellow]")
+        print_error(f"Error fetching odds from URL: {str(e)}")
+        print_warning("Please check the URL and try again, or use the fetch-odds command with a saved HTML file.")
         return None
 
 
@@ -185,12 +112,9 @@ def parse_ev_singles_text(prediction_text: str) -> list[dict]:
     Returns:
         List of 5 bet dictionaries with EV analysis
     """
-    import re
-
     bets = []
 
     # Pattern to match EV singles output format
-    # Note: Fields may have explanatory text in parentheses, so we use [^\n]* to skip to end of line
     bet_pattern = r'## Bet (\d+):.+?\n\*\*Bet\*\*: (.+?)\n\*\*Odds\*\*: ([+-]?\d+)\n\*\*Implied Probability\*\*: ([\d.]+)%[^\n]*\n\*\*True Probability\*\*: ([\d.]+)%[^\n]*\n\*\*Expected Value\*\*: \+?([\d.]+)%[^\n]*\n\*\*Kelly Criterion\*\*: ([\d.]+)%[^:]+half: ([\d.]+)%[^\n]*\n\*\*Reasoning\*\*: (.+?)(?=\n##|\Z)'
 
     for match in re.finditer(bet_pattern, prediction_text, re.DOTALL):
@@ -214,31 +138,14 @@ def save_ev_prediction_to_files(
     team_a: str,
     team_b: str,
     home_team: str,
+    team_a_abbr: str,
+    team_b_abbr: str,
     prediction_text: str,
     cost: float,
     model: str,
     tokens: dict
 ):
-    """Save EV prediction to markdown and JSON files."""
-
-    # Create predictions_ev directory structure
-    predictions_dir = "nfl/data/predictions_ev"
-    date_dir = os.path.join(predictions_dir, game_date)
-    os.makedirs(date_dir, exist_ok=True)
-
-    # Get team abbreviations
-    team_a_abbr = get_team_abbreviation(team_a)
-    team_b_abbr = get_team_abbreviation(team_b)
-
-    # Put home team first in filename
-    if home_team == team_a:
-        base_filename = f"{team_a_abbr}_{team_b_abbr}"
-    else:
-        base_filename = f"{team_b_abbr}_{team_a_abbr}"
-
-    md_filepath = os.path.join(date_dir, f"{base_filename}.md")
-    json_filepath = os.path.join(date_dir, f"{base_filename}.json")
-
+    """Save EV prediction to markdown and JSON files using repository."""
     # Build markdown content
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     markdown = f"""# {team_a} vs {team_b} - EV+ Singles - {game_date}
@@ -261,10 +168,6 @@ def save_ev_prediction_to_files(
 - **Half Kelly**: Recommended conservative stake (safer than full Kelly)
 - **Minimum EV**: All bets have +3% or higher expected value
 """
-
-    # Save markdown
-    with open(md_filepath, "w", encoding="utf-8") as f:
-        f.write(markdown)
 
     # Parse prediction to extract structured data
     bets = parse_ev_singles_text(prediction_text)
@@ -297,25 +200,21 @@ def save_ev_prediction_to_files(
         "summary": summary
     }
 
-    # Save JSON
-    with open(json_filepath, "w", encoding="utf-8") as f:
-        json.dump(prediction_data, f, indent=2, ensure_ascii=False)
+    # Determine correct order (home team first)
+    if home_team == team_a:
+        home_abbr, away_abbr = team_a_abbr, team_b_abbr
+    else:
+        home_abbr, away_abbr = team_b_abbr, team_a_abbr
 
-
-def load_team_profiles(team_a: str, team_b: str) -> tuple[dict, dict]:
-    """Load team profiles (same logic as predict.py)."""
-    from nfl.cli_utils.predict import load_team_profiles as load_profiles
-    return load_profiles(team_a, team_b)
+    # Save using repository
+    prediction_repo.save_prediction(game_date, home_abbr, away_abbr, markdown, file_format="md")
+    prediction_repo.save_prediction(game_date, home_abbr, away_abbr, prediction_data, file_format="json")
 
 
 def predict_ev_singles():
     """Generate 5 EV+ individual bets ranked by expected value."""
 
-    console.print()
-    console.print(Panel.fit(
-        "[bold cyan]📊 NFL EV+ SINGLES GENERATOR 📊[/bold cyan]",
-        border_style="cyan"
-    ))
+    print_header("📊 NFL EV+ SINGLES GENERATOR 📊")
     console.print()
     console.print("[dim]Analyzes betting odds vs stats to find +EV opportunities[/dim]")
     console.print("[dim]Includes Kelly Criterion stake sizing recommendations[/dim]")
@@ -327,26 +226,26 @@ def predict_ev_singles():
             "game_date",
             message=f"Enter game date (YYYY-MM-DD) [default: {today}]",
             default=today,
-            validate=lambda _, x: len(x.split("-")) == 3 and all(p.isdigit() for p in x.split("-"))
+            validate=is_valid_inquirer_date
         )
     ]
     date_answers = inquirer.prompt(date_questions)
     if not date_answers:
-        console.print("[yellow]Selection cancelled.[/yellow]")
+        print_cancelled()
         return
 
     game_date = date_answers["game_date"]
 
-    # Team selection
+    # Team selection using team service
     console.print()
-    team_a = select_team("Select Team A (use arrow keys)")
+    team_a = team_service.select_team_interactive("Select Team A (use arrow keys)")
     if not team_a:
-        console.print("[yellow]Selection cancelled.[/yellow]")
+        print_cancelled()
         return
 
-    team_b = select_team("Select Team B (use arrow keys)")
+    team_b = team_service.select_team_interactive("Select Team B (use arrow keys)")
     if not team_b:
-        console.print("[yellow]Selection cancelled.[/yellow]")
+        print_cancelled()
         return
 
     # Home team selection
@@ -355,10 +254,16 @@ def predict_ev_singles():
     ]
     home_answers = inquirer.prompt(home_questions)
     if not home_answers:
-        console.print("[yellow]Selection cancelled.[/yellow]")
+        print_cancelled()
         return
 
     home_team = home_answers["home"]
+
+    # Get team abbreviations using team service
+    team_a_abbr = team_service.get_team_abbreviation(team_a)
+    team_b_abbr = team_service.get_team_abbreviation(team_b)
+    home_abbr = team_a_abbr if home_team == team_a else team_b_abbr
+    away_abbr = team_b_abbr if home_team == team_a else team_a_abbr
 
     # Display matchup
     console.print()
@@ -366,34 +271,41 @@ def predict_ev_singles():
     matchup_text += f"[dim]HOME: {home_team}[/dim]"
     console.print(Panel(matchup_text, title="[bold green]⚡ MATCHUP ⚡[/bold green]", border_style="green"))
 
-    # Check if already predicted today
-    was_predicted, filepath = was_ev_predicted_today(game_date, team_a, team_b, home_team)
+    # Check if already predicted today using metadata service
+    was_predicted, game_key = predictions_ev_metadata_service.was_game_predicted_today(
+        game_date, team_a_abbr, team_b_abbr, home_abbr
+    )
 
-    if was_predicted and os.path.exists(filepath):
-        console.print()
-        console.print("[cyan]📋 EV+ Singles already generated for this game today.[/cyan]\n")
+    if was_predicted:
+        # Try to load existing prediction
+        filepath = get_file_path("nfl", "predictions_ev", "prediction", game_date=game_date, team_a_abbr=home_abbr, team_b_abbr=away_abbr)
+        if os.path.exists(filepath):
+            console.print()
+            print_info("📋 EV+ Singles already generated for this game today.")
+            console.print()
 
-        try:
-            with open(filepath, encoding="utf-8") as f:
-                content = f.read()
-                prediction_content = content.split("---\n", 1)[1] if "---\n" in content else content
+            try:
+                with open(filepath, encoding="utf-8") as f:
+                    content = f.read()
+                    prediction_content = content.split("---\n", 1)[1] if "---\n" in content else content
 
-            console.print(Panel(Markdown(prediction_content),
-                               title="[bold green]📊 TOP 5 EV+ BETS 📊[/bold green]",
-                               border_style="green", padding=(1, 2)))
-            console.print(f"\n[green]✓[/green] [dim]Using prediction from {filepath}[/dim]")
-            return
-        except Exception as e:
-            console.print(f"[yellow]⚠ Could not load existing: {str(e)}[/yellow]")
-            console.print("[cyan]Generating new prediction...[/cyan]\n")
+                console.print(Panel(Markdown(prediction_content),
+                                   title="[bold green]📊 TOP 5 EV+ BETS 📊[/bold green]",
+                                   border_style="green", padding=(1, 2)))
+                console.print(f"\n[green]✓[/green] [dim]Using prediction from {filepath}[/dim]")
+                return
+            except Exception as e:
+                print_warning(f"Could not load existing: {str(e)}")
+                print_info("Generating new prediction...")
+                console.print()
 
-    # Check if odds already exist
-    existing_odds = load_odds_file(game_date, team_a, team_b, home_team)
+    # Check if odds already exist using odds service
+    existing_odds = odds_service.load_odds_for_game(game_date, team_a_abbr, team_b_abbr, home_abbr)
 
     if not existing_odds:
         # Prompt for DraftKings URL
         console.print()
-        console.print("[cyan]📊 Betting odds required for EV analysis[/cyan]")
+        print_info("📊 Betting odds required for EV analysis")
         console.print("[dim]Please provide the DraftKings game URL to fetch odds[/dim]\n")
 
         url_questions = [
@@ -406,28 +318,28 @@ def predict_ev_singles():
         url_answers = inquirer.prompt(url_questions)
 
         if not url_answers:
-            console.print("[yellow]Selection cancelled.[/yellow]")
+            print_cancelled()
             return
 
         dk_url = url_answers["dk_url"].strip()
 
         if dk_url:
             # Fetch and save odds from URL
-            odds_data = fetch_and_save_odds_from_url(dk_url, game_date, team_a, team_b, home_team)
+            odds_data = fetch_and_save_odds_from_url(dk_url, game_date, team_a_abbr, team_b_abbr, home_abbr)
             if not odds_data:
-                console.print("[bold red]✗ Failed to fetch odds. Cannot generate EV predictions without odds.[/bold red]")
+                print_error("Failed to fetch odds. Cannot generate EV predictions without odds.")
                 return
         else:
-            console.print("[yellow]⚠ No URL provided. Cannot generate EV predictions without odds.[/yellow]")
+            print_warning("No URL provided. Cannot generate EV predictions without odds.")
             return
     else:
         console.print()
-        console.print("[green]✓[/green] [dim]Using existing odds file[/dim]")
+        print_success("Using existing odds file")
 
     # Auto-fetch rankings if needed
     if not nfl_sport.scraper.rankings_metadata_mgr.was_scraped_today():
         console.print()
-        console.print("[cyan]📊 Fetching fresh rankings data...[/cyan]")
+        print_info("📊 Fetching fresh rankings data...")
         nfl_sport.scraper.extract_rankings()
 
     # Load rankings
@@ -436,14 +348,16 @@ def predict_ev_singles():
         rankings = nfl_sport.predictor.load_ranking_tables()
 
     if not rankings:
-        console.print("[bold red]✗ Error:[/bold red] Could not load ranking data.")
+        print_error("Could not load ranking data.")
         return
 
     # Load team profiles
     console.print()
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
         progress.add_task(description="Loading team profile data...", total=None)
-        profile_a, profile_b = load_team_profiles(team_a, team_b)
+        profiles = profile_service.load_team_profiles(team_a, team_b)
+        profile_a = profiles.get(team_a)
+        profile_b = profiles.get(team_b)
 
     # Validate profiles
     if not profile_a or not profile_b:
@@ -456,29 +370,22 @@ def predict_ev_singles():
         console.print(Panel(error_text, border_style="red", padding=(1, 2)))
         return
 
-    # Load odds (REQUIRED for EV analysis)
+    # Load odds (REQUIRED for EV analysis) using odds service
     console.print()
-    console.print("[cyan]📊 Loading betting odds (required for EV analysis)...[/cyan]")
-    odds_data = load_odds_file(game_date, team_a, team_b, home_team)
+    print_info("📊 Loading betting odds (required for EV analysis)...")
+    odds_data = odds_service.load_odds_for_game(game_date, team_a_abbr, team_b_abbr, home_abbr)
 
     if not odds_data:
         console.print()
-        team_a_abbr = get_team_abbreviation(team_a)
-        team_b_abbr = get_team_abbreviation(team_b)
-        home_abbr = team_a_abbr if home_team == team_a else team_b_abbr
-        away_abbr = team_b_abbr if home_team == team_a else team_a_abbr
-
         error_text = "[bold red]ERROR: Odds required for EV+ analysis[/bold red]\n\n"
         error_text += "[yellow]EV+ mode calculates expected value by comparing odds to stats.[/yellow]\n"
-        error_text += "Odds data is required.\n\n"
-        error_text += "Please fetch odds first:\n"
-        error_text += "1. Save DraftKings HTML from game page\n"
-        error_text += f"2. Run: [cyan]python main.py → NFL → Fetch Odds[/cyan]\n\n"
-        error_text += f"[dim]Expected: nfl/data/odds/{game_date}/{home_abbr}_{away_abbr}.json[/dim]"
+        error_text += "Odds data is required but could not be loaded.\n\n"
+        error_text += "Please provide a valid DraftKings game URL when prompted, or\n"
+        error_text += f"fetch odds first: [cyan]python main.py → NFL → Fetch Odds[/cyan]"
         console.print(Panel(error_text, border_style="red", padding=(1, 2)))
         return
 
-    console.print("[green]✓[/green] [dim]Loaded betting odds from DraftKings[/dim]")
+    print_success("Loaded betting odds from DraftKings")
     game_lines_count = len(odds_data.get("game_lines", {}))
     player_props_count = len(odds_data.get("player_props", []))
     console.print(f"[dim]  • Game lines: {game_lines_count}[/dim]")
@@ -517,49 +424,32 @@ def predict_ev_singles():
                        title="[bold green]📊 TOP 5 EV+ BETS 📊[/bold green]",
                        border_style="green", padding=(1, 2)))
 
-    # Display cost
-    console.print(f"\n[dim]Model: {model}[/dim]")
-    console.print(f"[dim]Tokens: {tokens['input']:,} input, {tokens['output']:,} output ({tokens['total']:,} total)[/dim]")
-    console.print(f"[bold cyan]API Cost: ${cost:.4f}[/bold cyan]")
+    # Display cost information using console utils
+    print_cost_info(cost, tokens['input'], tokens['output'], tokens['total'])
+    console.print(f"[dim]Model: {model}[/dim]")
 
     # Save files and metadata
     try:
-        save_ev_prediction_to_files(game_date, team_a, team_b, home_team,
-                                     prediction_text, cost, model, tokens)
+        save_ev_prediction_to_files(
+            game_date, team_a, team_b, home_team,
+            team_a_abbr, team_b_abbr,
+            prediction_text, cost, model, tokens
+        )
 
-        # Update metadata
-        metadata = load_predictions_ev_metadata()
-        team_a_abbr = get_team_abbreviation(team_a)
-        team_b_abbr = get_team_abbreviation(team_b)
-
-        if home_team == team_a:
-            game_key = f"{game_date}_{team_a_abbr}_{team_b_abbr}"
-        else:
-            game_key = f"{game_date}_{team_b_abbr}_{team_a_abbr}"
-
-        # Get home team PFR abbreviation
-        home_team_pfr_abbr = None
-        for team in TEAMS:
-            if team["name"] == home_team:
-                home_team_pfr_abbr = team["pfr_abbr"]
-                break
-
-        metadata[game_key] = {
-            "last_predicted": date.today().isoformat(),
-            "prediction_type": "ev_singles",
-            "results_fetched": False,
-            "odds_used": True,
-            "odds_source": "draftkings",
-            "game_date": game_date,
-            "teams": [team_a, team_b],
-            "home_team": home_team,
-            "home_team_abbr": home_team_pfr_abbr
-        }
-        save_predictions_ev_metadata(metadata)
+        # Update metadata using service
+        predictions_ev_metadata_service.mark_game_predicted(
+            game_key,
+            game_date,
+            [team_a, team_b],
+            home_team,
+            home_abbr,
+            odds_used=True,
+            odds_source="draftkings"
+        )
 
         # Display save confirmation
-        filename = f"{team_a_abbr}_{team_b_abbr}.md" if home_team == team_a else f"{team_b_abbr}_{team_a_abbr}.md"
-        console.print(f"\n[green]✓[/green] [dim]Saved to nfl/data/predictions_ev/{game_date}/{filename}[/dim]")
+        filename = f"{home_abbr}_{away_abbr}.md"
+        print_success(f"Saved to nfl/data/predictions_ev/{game_date}/{filename}")
 
     except Exception as e:
         console.print()

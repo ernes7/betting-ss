@@ -1,9 +1,10 @@
-"""NFL EV+ Singles prediction analyzer implementation."""
+"""NFL EV+ Singles prediction analyzer implementation - Refactored with repositories."""
 
 import json
-import os
 
 from shared.base.analyzer import BaseAnalyzer
+from shared.base.sport_config import SportConfig
+from shared.repositories import PredictionRepository, ResultsRepository, AnalysisRepository
 from nfl.constants import FIXED_BET_AMOUNT
 
 
@@ -19,47 +20,23 @@ class NFLEVAnalyzer(BaseAnalyzer):
     Uses Claude Sonnet 4.5 by default for high-accuracy analysis.
     """
 
-    def _get_prediction_path(self, game_key: str, game_meta: dict) -> str:
-        """Build path to EV prediction JSON file.
+    def __init__(self, config: SportConfig, model: str = "claude-sonnet-4-5-20250929"):
+        """Initialize EV analyzer with sport configuration.
+
+        Overrides parent to use EV-specific repositories.
 
         Args:
-            game_key: Game identifier
-            game_meta: Game metadata
-
-        Returns:
-            Absolute path to prediction file
+            config: Sport configuration object implementing SportConfig interface
+            model: Claude model to use (default: claude-sonnet-4-5-20250929)
         """
-        game_date = game_meta.get("game_date")
-        parts = game_key.split("_")
+        # Call parent init (which initializes regular repositories)
+        super().__init__(config, model)
 
-        # Remove date prefix if present
-        if parts[0] == game_date:
-            filename = "_".join(parts[1:]) + ".json"
-        else:
-            filename = game_key + ".json"
-
-        return os.path.join(self.config.predictions_ev_dir, game_date, filename)
-
-    def _get_analysis_path(self, game_key: str, game_meta: dict) -> str:
-        """Build path to EV analysis JSON file.
-
-        Args:
-            game_key: Game identifier
-            game_meta: Game metadata
-
-        Returns:
-            Absolute path to analysis file
-        """
-        game_date = game_meta.get("game_date")
-        parts = game_key.split("_")
-
-        # Remove date prefix if present
-        if parts[0] == game_date:
-            filename = "_".join(parts[1:]) + ".json"
-        else:
-            filename = game_key + ".json"
-
-        return os.path.join(self.config.analysis_ev_dir, game_date, filename)
+        # Override with EV-specific repositories
+        sport_code = config.sport_name.lower()
+        self.prediction_repo = PredictionRepository(sport_code, prediction_type="predictions_ev")
+        self.analysis_repo = AnalysisRepository(sport_code, analysis_type="analysis_ev")
+        # results_repo remains the same (results are shared)
 
     def _build_analysis_prompt(self, prediction_data: dict, result_data: dict) -> str:
         """Build NFL EV+ Singles specific analysis prompt for Claude.

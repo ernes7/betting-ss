@@ -1,14 +1,15 @@
-"""Base class for prediction analysis across all sports."""
+"""Base class for prediction analysis across all sports - Refactored with repositories."""
 
 import json
-import os
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from anthropic import Anthropic
 
 from shared.base.sport_config import SportConfig
+from shared.repositories import PredictionRepository, ResultsRepository, AnalysisRepository
+from shared.config import calculate_api_cost
 
 
 class BaseAnalyzer(ABC):
@@ -17,7 +18,7 @@ class BaseAnalyzer(ABC):
     Workflow:
     1. Load prediction JSON (parlays and bets)
     2. Load result JSON (final score, stats, tables)
-    3. Send to Claude Haiku for intelligent analysis
+    3. Send to Claude for intelligent analysis
     4. Parse AI response to determine hit/miss for each leg
     5. Calculate summary statistics
     6. Save analysis JSON to {sport}/analysis/{date}/{game}.json
@@ -34,6 +35,12 @@ class BaseAnalyzer(ABC):
         self.model = model
         self.client = Anthropic()
 
+        # Initialize repositories based on sport
+        sport_code = config.sport_name.lower()  # "nfl" or "nba"
+        self.prediction_repo = PredictionRepository(sport_code)
+        self.results_repo = ResultsRepository(sport_code)
+        self.analysis_repo = AnalysisRepository(sport_code)
+
     def generate_analysis(self, game_key: str, game_meta: dict) -> dict:
         """Generate analysis for a single game's predictions vs actual results.
 
@@ -47,7 +54,7 @@ class BaseAnalyzer(ABC):
         Raises:
             Exception: If prediction or result files not found, or API call fails
         """
-        # 1. Load prediction and result data
+        # 1. Load prediction and result data using repositories
         prediction_data = self._load_prediction(game_key, game_meta)
         result_data = self._load_result(game_key, game_meta)
 
@@ -72,21 +79,21 @@ class BaseAnalyzer(ABC):
                 "home": result_data.get("teams", {}).get("home")
             },
             "final_score": result_data.get("final_score"),
-            "prediction_file": self._get_prediction_path(game_key, game_meta),
-            "result_file": self._get_result_path(game_key, game_meta),
+            "prediction_file": self._get_prediction_identifier(game_key, game_meta),
+            "result_file": self._get_result_identifier(game_key, game_meta),
             "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "model": self.model,
             "api_cost": cost,
             "tokens": tokens
         })
 
-        # 7. Save analysis to file
+        # 7. Save analysis using repository
         self._save_analysis(game_key, game_meta, analysis_data)
 
         return analysis_data
 
     def _load_prediction(self, game_key: str, game_meta: dict) -> dict:
-        """Load prediction JSON file.
+        """Load prediction JSON file using repository.
 
         Args:
             game_key: Game identifier
@@ -95,16 +102,18 @@ class BaseAnalyzer(ABC):
         Returns:
             Prediction data dictionary
         """
-        filepath = self._get_prediction_path(game_key, game_meta)
+        game_date = game_meta.get("game_date")
+        filename = self._extract_filename_from_key(game_key, game_date)
 
-        if not os.path.exists(filepath):
-            raise Exception(f"Prediction file not found: {filepath}")
+        data = self.prediction_repo.load_prediction(game_date, filename)
 
-        with open(filepath, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        if data is None:
+            raise Exception(f"Prediction file not found: {game_date}/{filename}.json")
+
+        return data
 
     def _load_result(self, game_key: str, game_meta: dict) -> dict:
-        """Load result JSON file.
+        """Load result JSON file using repository.
 
         Args:
             game_key: Game identifier
@@ -113,55 +122,61 @@ class BaseAnalyzer(ABC):
         Returns:
             Result data dictionary
         """
-        filepath = self._get_result_path(game_key, game_meta)
+        game_date = game_meta.get("game_date")
+        filename = self._extract_filename_from_key(game_key, game_date)
 
-        if not os.path.exists(filepath):
-            raise Exception(f"Result file not found: {filepath}")
+        data = self.results_repo.load_result(game_date, filename)
 
-        with open(filepath, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        if data is None:
+            raise Exception(f"Result file not found: {game_date}/{filename}.json")
 
-    def _get_prediction_path(self, game_key: str, game_meta: dict) -> str:
-        """Build path to prediction JSON file.
+        return data
+
+    def _extract_filename_from_key(self, game_key: str, game_date: str) -> str:
+        """Extract filename from game key.
+
+        Args:
+            game_key: Game identifier (e.g., "w8_team1_team2" or "2025-10-23_team1_team2")
+            game_date: Game date string
+
+        Returns:
+            Filename without extension
+        """
+        parts = game_key.split("_")
+
+        # Remove date prefix if present
+        if parts[0] == game_date:
+            return "_".join(parts[1:])
+        else:
+            return game_key
+
+    def _get_prediction_identifier(self, game_key: str, game_meta: dict) -> str:
+        """Get prediction file identifier for metadata.
 
         Args:
             game_key: Game identifier
             game_meta: Game metadata
 
         Returns:
-            Absolute path to prediction file
+            Relative path to prediction file
         """
         game_date = game_meta.get("game_date")
-        parts = game_key.split("_")
+        filename = self._extract_filename_from_key(game_key, game_date)
+        return f"{self.config.sport_name}/data/predictions/{game_date}/{filename}.json"
 
-        # Remove date prefix if present
-        if parts[0] == game_date:
-            filename = "_".join(parts[1:]) + ".json"
-        else:
-            filename = game_key + ".json"
-
-        return os.path.join(self.config.predictions_dir, game_date, filename)
-
-    def _get_result_path(self, game_key: str, game_meta: dict) -> str:
-        """Build path to result JSON file.
+    def _get_result_identifier(self, game_key: str, game_meta: dict) -> str:
+        """Get result file identifier for metadata.
 
         Args:
             game_key: Game identifier
             game_meta: Game metadata
 
         Returns:
-            Absolute path to result file
+            Relative path to result file
         """
         game_date = game_meta.get("game_date")
-        parts = game_key.split("_")
-
-        # Remove date prefix if present
-        if parts[0] == game_date:
-            filename = "_".join(parts[1:]) + ".json"
-        else:
-            filename = game_key + ".json"
-
-        return os.path.join(self.config.results_dir, game_date, filename)
+        filename = self._extract_filename_from_key(game_key, game_date)
+        return f"{self.config.sport_name}/data/results/{game_date}/{filename}.json"
 
     def _validate_result_tables(self, result_data: dict):
         """Validate that result data contains all required tables.
@@ -220,20 +235,10 @@ class BaseAnalyzer(ABC):
         # Extract response text
         response_text = response.content[0].text
 
-        # Calculate cost based on model
+        # Calculate cost using shared config
         input_tokens = response.usage.input_tokens
         output_tokens = response.usage.output_tokens
-
-        # Claude Sonnet 4.5: $3/MTok input, $15/MTok output
-        # Claude Haiku 4.5: $0.80/MTok input, $4/MTok output
-        if "haiku" in self.model.lower():
-            input_cost = (input_tokens / 1_000_000) * 0.80
-            output_cost = (output_tokens / 1_000_000) * 4.0
-        else:  # Sonnet
-            input_cost = (input_tokens / 1_000_000) * 3.0
-            output_cost = (output_tokens / 1_000_000) * 15.0
-
-        total_cost = input_cost + output_cost
+        total_cost = calculate_api_cost(input_tokens, output_tokens, self.model)
 
         tokens = {
             "input": input_tokens,
@@ -352,23 +357,35 @@ class BaseAnalyzer(ABC):
         return analysis_data
 
     def _save_analysis(self, game_key: str, game_meta: dict, analysis_data: dict):
-        """Save analysis to JSON file.
+        """Save analysis using repository.
 
         Args:
             game_key: Game identifier
             game_meta: Game metadata
             analysis_data: Analysis dictionary to save
         """
-        # Use the overrideable _get_analysis_path() method
-        # This allows subclasses (like NFLEVAnalyzer) to customize the save location
-        filepath = self._get_analysis_path(game_key, game_meta)
+        game_date = game_meta.get("game_date")
+        filename = self._extract_filename_from_key(game_key, game_date)
 
-        # Create directory structure
-        date_dir = os.path.dirname(filepath)
-        os.makedirs(date_dir, exist_ok=True)
+        # Save using repository
+        self.analysis_repo.save_analysis(game_date, filename, analysis_data)
 
-        # Save to JSON file
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(analysis_data, f, indent=2, ensure_ascii=False)
+        print(f"    [dim]Analysis saved to {self.config.sport_name}/data/analysis/{game_date}/{filename}.json[/dim]")
 
-        print(f"    [dim]Analysis saved to {filepath}[/dim]")
+    def _get_analysis_path(self, game_key: str, game_meta: dict) -> str:
+        """Build path to analysis JSON file.
+
+        DEPRECATED: This method is kept for backwards compatibility with subclasses.
+        New code should use repositories directly via _save_analysis().
+
+        Args:
+            game_key: Game identifier
+            game_meta: Game metadata
+
+        Returns:
+            Absolute path to analysis file
+        """
+        import os
+        game_date = game_meta.get("game_date")
+        filename = self._extract_filename_from_key(game_key, game_date)
+        return os.path.join(self.config.analysis_dir, game_date, f"{filename}.json")

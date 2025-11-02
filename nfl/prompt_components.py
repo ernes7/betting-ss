@@ -6,14 +6,16 @@ class NFLPromptComponents:
 
     sport_name = "NFL"
 
-    bet_types_list = """  * QB passing yards O/U (e.g., "Justin Herbert Over 265.5 passing yards")
+    bet_types_list = """  * Moneyline - underdog wins with positive odds (e.g., "Panthers ML +625", "Bears ML +124")
+  * Spread - underdog covers with positive odds (e.g., "Panthers +12.5 -102", "Vikings +8.5 -105")
+  * QB passing yards O/U (e.g., "Justin Herbert Over 265.5 passing yards")
   * RB rushing yards O/U (e.g., "Aaron Jones Over 55.5 rushing yards")
   * WR receiving yards O/U (e.g., "Justin Jefferson Over 75.5 receiving yards")
   * Player receptions O/U (e.g., "Justin Jefferson Over 6.5 receptions")
   * QB pass completions O/U (e.g., "Justin Herbert Over 22.5 completions")
   * QB pass attempts O/U (e.g., "Justin Herbert Over 35.5 attempts")
   * Player rush attempts O/U (e.g., "Aaron Jones Over 18.5 rush attempts")
-  * Player anytime TD / touchdown scorers (e.g., "Justin Jefferson anytime TD")
+  * Player anytime TD / touchdown scorers (e.g., "Justin Jefferson anytime TD", "Cole Kmet anytime TD +340")
   * Individual defensive player sacks O/U (PLAYER SPECIFIC ONLY - e.g., "Joey Bosa Over 0.5 sacks")
   * Defensive player tackles + assists O/U (e.g., "Roquan Smith Over 8.5 tackles+assists")
   * Individual defensive player interceptions O/U (PLAYER SPECIFIC ONLY - e.g., "Sauce Gardner Over 0.5 interceptions")

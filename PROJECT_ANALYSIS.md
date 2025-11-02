@@ -66,6 +66,54 @@ betting-ss/
 - **Sport-specific configuration**: Each implements the `SportConfig` interface
 - **Independent data directories**: Completely separate data flows and storage
 
+### Clean Architecture Layers
+
+The project now follows **Clean Architecture** principles with distinct layers:
+
+```
+shared/
+├── config/                    # Configuration Layer
+│   ├── api_config.py         # Claude API settings & cost calculation
+│   ├── scraping_config.py    # Rate limits & browser config
+│   └── paths_config.py       # Path templates & builders
+│
+├── services/                  # Service Layer (Business Logic)
+│   ├── team_service.py       # Team operations (select, abbreviate)
+│   ├── metadata_service.py   # Metadata load/save operations
+│   ├── profile_service.py    # Profile loading with auto-scraping
+│   └── odds_service.py       # Odds loading operations
+│
+├── repositories/              # Repository Layer (Data Access)
+│   ├── base_repository.py    # Abstract JSON operations
+│   ├── prediction_repository.py  # Prediction data access
+│   ├── results_repository.py     # Results data access
+│   ├── odds_repository.py        # Odds data access
+│   └── analysis_repository.py    # Analysis data access
+│
+└── utils/                     # Utility Layer
+    ├── console_utils.py      # 16 reusable CLI formatting functions
+    └── validation_utils.py   # 9 validation functions
+```
+
+**Key Benefits:**
+- **No Code Duplication**: All CLI files use shared services
+- **Easy to Test**: Services are mockable, repositories are injectable
+- **Database-Ready**: Repository pattern enables easy migration from JSON to DB
+- **Sport-Agnostic**: Same services work for NFL, NBA, and future sports
+- **Consistent UX**: Unified console output and error handling
+
+**Example Usage in CLI Files:**
+```python
+# Old way (manual, duplicated everywhere)
+with open(f"nfl/data/odds/{date}/{home}_{away}.json") as f:
+    odds_data = json.load(f)
+
+# New way (service layer)
+from shared.services import OddsService
+odds_service = OddsService("nfl")
+odds_data = odds_service.load_odds_for_game(date, team_a, team_b, home)
+```
+
 ---
 
 ## 2. PREDICTION PIPELINE - DATA FLOW
