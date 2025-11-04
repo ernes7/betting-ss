@@ -42,3 +42,13 @@ TEAM_ABBR_MAP = {team["abbreviation"]: team["name"] for team in TEAMS}
 
 # Full name to abbreviation mapping
 TEAM_NAME_TO_ABBR = {team["name"]: team["abbreviation"] for team in TEAMS}
+
+# DraftKings to Pro-Basketball-Reference abbreviation mapping
+DK_TO_PBR_ABBR = {team["abbreviation"]: team["pbr_abbr"] for team in TEAMS}
+
+# Pro-Basketball-Reference to DraftKings abbreviation mapping
+PBR_TO_DK_ABBR = {team["pbr_abbr"]: team["abbreviation"] for team in TEAMS}
+
+# Additional helper mappings
+DK_ABBR_TO_NAME = {team["abbreviation"]: team["name"] for team in TEAMS}
+PBR_ABBR_TO_NAME = {team["pbr_abbr"]: team["name"] for team in TEAMS}

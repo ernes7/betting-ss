@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from shared.base.sport_config import SportConfig
 from shared.base.prompt_builder import PromptBuilder
 from shared.utils import FileManager
+from shared.utils.data_optimizer import optimize_rankings
 
 # Load environment variables
 load_dotenv()
@@ -84,6 +85,7 @@ class Predictor:
         rankings: dict | None = None,
         profile_a: dict | None = None,
         profile_b: dict | None = None,
+        odds: dict | None = None,
     ) -> dict:
         """Generate betting parlays using Claude API.
 
@@ -94,6 +96,7 @@ class Predictor:
             rankings: All ranking tables (will load if not provided)
             profile_a: Team A's detailed profile (will load if not provided)
             profile_b: Team B's detailed profile (will load if not provided)
+            odds: Betting odds data from sportsbook (optional)
 
         Returns:
             Dictionary with prediction text, cost, model, and token usage:
@@ -117,9 +120,12 @@ class Predictor:
         if rankings is None:
             rankings = self.load_ranking_tables()
 
+        # Optimize rankings to reduce token usage
+        optimized_rankings = optimize_rankings(rankings, team_a, team_b)
+
         # Extract team data from rankings
-        team_a_stats = self.get_team_from_rankings(rankings, team_a)
-        team_b_stats = self.get_team_from_rankings(rankings, team_b)
+        team_a_stats = self.get_team_from_rankings(optimized_rankings, team_a)
+        team_b_stats = self.get_team_from_rankings(optimized_rankings, team_b)
 
         if not team_a_stats or not team_b_stats:
             return {
@@ -145,6 +151,7 @@ class Predictor:
             team_b_stats=team_b_stats,
             profile_a=profile_a,
             profile_b=profile_b,
+            odds=odds,
         )
 
         # Call Claude API
@@ -172,6 +179,142 @@ class Predictor:
                 input_cost = (input_tokens / 1_000_000) * 3.0
                 output_cost = (output_tokens / 1_000_000) * 15.0
 
+            total_cost = input_cost + output_cost
+
+            return {
+                "success": True,
+                "prediction": message.content[0].text,
+                "cost": total_cost,
+                "model": self.model,
+                "tokens": {
+                    "input": input_tokens,
+                    "output": output_tokens,
+                    "total": total_tokens
+                }
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "prediction": "",
+                "cost": 0.0,
+                "model": self.model,
+                "tokens": {"input": 0, "output": 0, "total": 0}
+            }
+
+    def generate_ev_singles(
+        self,
+        team_a: str,
+        team_b: str,
+        home_team: str,
+        rankings: dict | None = None,
+        profile_a: dict | None = None,
+        profile_b: dict | None = None,
+        odds: dict = None
+    ) -> dict:
+        """Generate 5 individual EV+ bets with Kelly Criterion.
+
+        Args:
+            team_a: First team name
+            team_b: Second team name
+            home_team: Which team is playing at home
+            rankings: All ranking tables (will load if not provided)
+            profile_a: Team A's detailed profile (will load if not provided)
+            profile_b: Team B's detailed profile (will load if not provided)
+            odds: Betting odds (REQUIRED for EV analysis)
+
+        Returns:
+            Dictionary with prediction text, cost, model, and token usage:
+            {
+                "success": bool,
+                "prediction": str,
+                "cost": float,
+                "model": str,
+                "tokens": {"input": int, "output": int, "total": int},
+                "error": str  # Only if success=False
+            }
+        """
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            return {
+                "success": False,
+                "error": "ANTHROPIC_API_KEY not found in .env file",
+                "prediction": "",
+                "cost": 0.0,
+                "model": self.model,
+                "tokens": {"input": 0, "output": 0, "total": 0}
+            }
+
+        # Odds are required for EV analysis
+        if odds is None:
+            return {
+                "success": False,
+                "error": "Odds data is required for EV+ analysis",
+                "prediction": "",
+                "cost": 0.0,
+                "model": self.model,
+                "tokens": {"input": 0, "output": 0, "total": 0}
+            }
+
+        # Load rankings if not provided
+        if rankings is None:
+            rankings = self.load_ranking_tables()
+
+        # Optimize rankings to reduce token usage
+        optimized_rankings = optimize_rankings(rankings, team_a, team_b)
+
+        # Extract team data from rankings
+        team_a_stats = self.get_team_from_rankings(optimized_rankings, team_a)
+        team_b_stats = self.get_team_from_rankings(optimized_rankings, team_b)
+
+        if not team_a_stats or not team_b_stats:
+            return {
+                "success": False,
+                "error": f"Could not find stats for {team_a} or {team_b} in rankings",
+                "prediction": "",
+                "cost": 0.0,
+                "model": self.model,
+                "tokens": {"input": 0, "output": 0, "total": 0}
+            }
+
+        # Load profiles if not provided
+        if profile_a is None:
+            profile_a = self.load_team_profile(team_a)
+        if profile_b is None:
+            profile_b = self.load_team_profile(team_b)
+
+        # Build EV-specific prompt
+        prompt = self.prompt_builder.build_ev_singles_prompt(
+            sport_components=self.config.prompt_components,
+            team_a=team_a,
+            team_b=team_b,
+            home_team=home_team,
+            team_a_stats=team_a_stats,
+            team_b_stats=team_b_stats,
+            profile_a=profile_a,
+            profile_b=profile_b,
+            odds=odds
+        )
+
+        # Call Claude API (same as generate_parlays)
+        client = anthropic.Anthropic(api_key=api_key)
+
+        try:
+            message = client.messages.create(
+                model=self.model,
+                max_tokens=2048,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            # Extract token usage and calculate cost
+            input_tokens = message.usage.input_tokens
+            output_tokens = message.usage.output_tokens
+            total_tokens = input_tokens + output_tokens
+
+            # Calculate cost (Sonnet 4.5: $3/MTok input, $15/MTok output)
+            input_cost = (input_tokens / 1_000_000) * 3.0
+            output_cost = (output_tokens / 1_000_000) * 15.0
             total_cost = input_cost + output_cost
 
             return {

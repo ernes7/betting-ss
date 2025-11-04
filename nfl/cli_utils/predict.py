@@ -1,155 +1,45 @@
-"""Prediction CLI commands."""
+"""Prediction CLI commands - Refactored with services."""
 
-import json
 import os
+import re
+import inquirer
 from datetime import date, datetime
 
-import inquirer
-from rich.console import Console
-from rich.markdown import Markdown
-from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
+# Import shared services
+from shared.services import (
+    create_team_service_for_sport,
+    MetadataService,
+    PredictionsMetadataService,
+    ProfileService,
+    OddsService
+)
+from shared.repositories import PredictionRepository
+from shared.utils.console_utils import (
+    print_header,
+    print_success,
+    print_error,
+    print_info,
+    print_cost_info,
+    print_cancelled,
+    print_markdown,
+    create_spinner_progress,
+    console
+)
+from shared.utils.validation_utils import is_valid_inquirer_date
+from shared.config import get_metadata_path, get_file_path
 
-# Import sport factory for OOP architecture
+# Import sport factory
 from shared.factory import SportFactory
-import shared.register_sports  # Auto-register sports
+import shared.register_sports
 
-from nfl.teams import TEAMS, TEAM_NAMES
-
-# Create NFL sport instance
+# Initialize services
 nfl_sport = SportFactory.create("nfl")
-
-# Initialize Rich console
-console = Console()
-
-# Metadata file paths
-METADATA_FILE = "nfl/data/profiles/.metadata.json"
-PREDICTIONS_METADATA_FILE = "nfl/data/predictions/.metadata.json"
-
-
-def load_metadata() -> dict:
-    """Load metadata file tracking when teams were last scraped."""
-    if os.path.exists(METADATA_FILE):
-        try:
-            with open(METADATA_FILE) as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"Warning: Could not load metadata file: {str(e)}")
-            return {}
-    return {}
-
-
-def save_metadata(metadata: dict):
-    """Save metadata file."""
-    os.makedirs(os.path.dirname(METADATA_FILE), exist_ok=True)
-    try:
-        with open(METADATA_FILE, "w") as f:
-            json.dump(metadata, f, indent=2)
-    except Exception as e:
-        print(f"Warning: Could not save metadata file: {str(e)}")
-
-
-def was_scraped_today(team_folder: str, metadata: dict) -> bool:
-    """Check if a team was scraped today."""
-    today = date.today().isoformat()
-    return metadata.get(team_folder) == today
-
-
-def load_predictions_metadata() -> dict:
-    """Load predictions metadata file tracking when games were predicted.
-
-    Automatically migrates old format (string) to new format (dict) if needed.
-    """
-    if os.path.exists(PREDICTIONS_METADATA_FILE):
-        try:
-            with open(PREDICTIONS_METADATA_FILE) as f:
-                metadata = json.load(f)
-
-            # Migrate old format to new format
-            migrated = False
-            for game_key, value in metadata.items():
-                if isinstance(value, str):  # Old format: just date string
-                    metadata[game_key] = {
-                        "last_predicted": value,
-                        "results_fetched": False,
-                        "game_date": None,  # Can't recover from old format
-                        "teams": None,
-                        "home_team": None,
-                        "home_team_abbr": None
-                    }
-                    migrated = True
-
-            # Save migrated version
-            if migrated:
-                save_predictions_metadata(metadata)
-                console.print("[dim]Migrated predictions metadata to new format[/dim]")
-
-            return metadata
-        except Exception as e:
-            console.print(f"[yellow]Warning: Could not load predictions metadata: {str(e)}[/yellow]")
-            return {}
-    return {}
-
-
-def save_predictions_metadata(metadata: dict):
-    """Save predictions metadata file."""
-    os.makedirs(os.path.dirname(PREDICTIONS_METADATA_FILE), exist_ok=True)
-    try:
-        with open(PREDICTIONS_METADATA_FILE, "w") as f:
-            json.dump(metadata, f, indent=2)
-    except Exception as e:
-        console.print(f"[yellow]Warning: Could not save predictions metadata: {str(e)}[/yellow]")
-
-
-def was_game_predicted_today(game_date: str, team_a: str, team_b: str, home_team: str) -> tuple[bool, str]:
-    """
-    Check if a game was already predicted today.
-
-    Returns:
-        Tuple of (was_predicted, filepath)
-    """
-    metadata = load_predictions_metadata()
-    today = date.today().isoformat()
-
-    # Generate the game key (same format as filename)
-    team_a_abbr = get_team_abbreviation(team_a)
-    team_b_abbr = get_team_abbreviation(team_b)
-
-    if home_team == team_a:
-        game_key = f"{game_date}_{team_a_abbr}_{team_b_abbr}"
-    else:
-        game_key = f"{game_date}_{team_b_abbr}_{team_a_abbr}"
-
-    # Check if predicted today
-    was_predicted = metadata.get(game_key) == today
-
-    # Build filepath
-    filename = f"{team_a_abbr}_{team_b_abbr}.md" if home_team == team_a else f"{team_b_abbr}_{team_a_abbr}.md"
-    filepath = os.path.join("nfl/predictions", game_date, filename)
-
-    return was_predicted, filepath
-
-
-def select_team(prompt):
-    """Display team list with arrow key navigation."""
-    questions = [
-        inquirer.List(
-            "team",
-            message=prompt,
-            choices=TEAM_NAMES,
-        ),
-    ]
-    answers = inquirer.prompt(questions)
-    return answers["team"] if answers else None
-
-
-def get_team_abbreviation(team_name: str) -> str:
-    """Get team abbreviation from team name."""
-    for team in TEAMS:
-        if team["name"] == team_name:
-            return team["abbreviation"].lower()
-    # Fallback to normalized full name if not found
-    return team_name.lower().replace(" ", "_")
+team_service = create_team_service_for_sport("nfl")
+profile_metadata_service = MetadataService(get_metadata_path("nfl", "profiles"))
+predictions_metadata_service = PredictionsMetadataService(get_metadata_path("nfl", "predictions"))
+profile_service = ProfileService("nfl", nfl_sport.scraper, profile_metadata_service)
+odds_service = OddsService("nfl")
+prediction_repo = PredictionRepository("nfl")
 
 
 def parse_prediction_text(prediction_text: str) -> list[dict]:
@@ -161,8 +51,6 @@ def parse_prediction_text(prediction_text: str) -> list[dict]:
     Returns:
         List of parlay dictionaries with name, confidence, bets, reasoning
     """
-    import re
-
     parlays = []
     # Updated pattern to handle confidence like "97%+" (with optional +)
     parlay_pattern = r'## (Parlay \d+: .+?)\n\*\*Confidence\*\*: (\d+)%\+?\n\n\*\*Bets:\*\*\n(.+?)\n\n\*\*Reasoning\*\*: (.+?)(?=\n##|\Z)'
@@ -194,41 +82,27 @@ def save_prediction_to_markdown(
     team_a: str,
     team_b: str,
     home_team: str,
+    team_a_abbr: str,
+    team_b_abbr: str,
     prediction_text: str,
     cost: float = 0.0,
     model: str = "unknown",
     tokens: dict = None,
 ):
-    """Save prediction to markdown and JSON files.
+    """Save prediction to markdown and JSON files using repository.
 
     Args:
         game_date: Game date/week identifier
         team_a: First team name
         team_b: Second team name
         home_team: Home team name
+        team_a_abbr: Team A abbreviation
+        team_b_abbr: Team B abbreviation
         prediction_text: Raw prediction text from API
         cost: API cost in USD
         model: Model name used
         tokens: Token usage dict with input, output, total keys
     """
-    # Create predictions directory structure
-    predictions_dir = "nfl/data/predictions"
-    date_dir = os.path.join(predictions_dir, game_date)
-    os.makedirs(date_dir, exist_ok=True)
-
-    # Get team abbreviations
-    team_a_abbr = get_team_abbreviation(team_a)
-    team_b_abbr = get_team_abbreviation(team_b)
-
-    # Put home team first in filename
-    if home_team == team_a:
-        base_filename = f"{team_a_abbr}_{team_b_abbr}"
-    else:
-        base_filename = f"{team_b_abbr}_{team_a_abbr}"
-
-    md_filepath = os.path.join(date_dir, f"{base_filename}.md")
-    json_filepath = os.path.join(date_dir, f"{base_filename}.json")
-
     # Build markdown content
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     markdown = f"""# {team_a} vs {team_b} - {game_date}
@@ -253,10 +127,6 @@ def save_prediction_to_markdown(
 **PARLAY 3 ODDS:**
 """
 
-    # Save markdown file
-    with open(md_filepath, "w", encoding="utf-8") as f:
-        f.write(markdown)
-
     # Parse prediction text to extract structured data
     parlays = parse_prediction_text(prediction_text)
 
@@ -273,91 +143,20 @@ def save_prediction_to_markdown(
         "parlays": parlays
     }
 
-    # Save JSON file
-    import json
-    with open(json_filepath, "w", encoding="utf-8") as f:
-        json.dump(prediction_data, f, indent=2, ensure_ascii=False)
+    # Determine correct order (home team first)
+    if home_team == team_a:
+        home_abbr, away_abbr = team_a_abbr, team_b_abbr
+    else:
+        home_abbr, away_abbr = team_b_abbr, team_a_abbr
 
-
-def load_team_profiles(team_a: str, team_b: str) -> tuple[dict, dict]:
-    """Load team profiles from data/profiles/{team_name}/ folders.
-
-    Always fetches fresh data unless the team was already scraped today.
-    Uses metadata tracking to avoid scraping the same team twice in one day.
-    """
-    # Load metadata to check what was scraped today
-    metadata = load_metadata()
-    profiles = {}
-
-    for team_name in [team_a, team_b]:
-        # Normalize team name to folder name
-        team_folder = team_name.lower().replace(" ", "_")
-        profile_dir = os.path.join("nfl/data/profiles", team_folder)
-
-        # Check if we already scraped this team today
-        if was_scraped_today(team_folder, metadata):
-            console.print(f"  [dim]Profile for {team_name} already scraped today, using existing data...[/dim]")
-        else:
-            console.print(f"  [cyan]Fetching fresh profile data for {team_name}...[/cyan]")
-
-            # Get PFR abbreviation from TEAMS
-            pfr_abbr = None
-            for team in TEAMS:
-                if team["name"] == team_name:
-                    pfr_abbr = team["pfr_abbr"]
-                    break
-
-            if not pfr_abbr:
-                console.print(f"  [red]✗ Could not find PFR abbreviation for {team_name}[/red]")
-                profiles[team_name] = None
-                continue
-
-            # Extract profile from PFR using OOP architecture
-            try:
-                nfl_sport.scraper.extract_team_profile(team_name)
-                console.print(f"  [green]✓ Successfully extracted profile for {team_name}[/green]")
-
-                # Update metadata with today's date
-                metadata[team_folder] = date.today().isoformat()
-                save_metadata(metadata)
-            except Exception as e:
-                console.print(f"  [red]✗ Failed to extract profile for {team_name}: {str(e)}[/red]")
-                profiles[team_name] = None
-                continue
-
-        # Check if profile directory exists
-        if not os.path.exists(profile_dir):
-            console.print(f"  [red]✗ Profile directory not found for {team_name}[/red]")
-            profiles[team_name] = None
-            continue
-
-        # Load all JSON files in the team's folder
-        team_profile = {}
-        for json_file in os.listdir(profile_dir):
-            if json_file.endswith(".json"):
-                table_name = json_file.replace(".json", "")
-                filepath = os.path.join(profile_dir, json_file)
-                try:
-                    with open(filepath) as f:
-                        team_profile[table_name] = json.load(f)
-                except Exception as e:
-                    console.print(f"  [yellow]⚠ Warning: Could not load {json_file}: {str(e)}[/yellow]")
-                    continue
-
-        profiles[team_name] = team_profile if team_profile else None
-        if team_profile:
-            console.print(f"  [green]✓ Loaded {len(team_profile)} tables for {team_name}[/green]")
-
-    return profiles[team_a], profiles[team_b]
+    # Save using repository
+    prediction_repo.save_prediction(game_date, home_abbr, away_abbr, markdown, file_format="md")
+    prediction_repo.save_prediction(game_date, home_abbr, away_abbr, prediction_data, file_format="json")
 
 
 def predict_game():
     """Generate parlays for a game matchup."""
-    console.print()
-    console.print(Panel.fit(
-        "[bold cyan]🎲 NFL GAME PARLAY GENERATOR 🎲[/bold cyan]",
-        border_style="cyan"
-    ))
+    print_header("🎲 NFL GAME PARLAY GENERATOR 🎲")
 
     # Ask for game date (default to today)
     today = date.today().isoformat()
@@ -366,26 +165,26 @@ def predict_game():
             "game_date",
             message=f"Enter game date (YYYY-MM-DD) [default: {today}]",
             default=today,
-            validate=lambda _, x: len(x.split("-")) == 3 and all(p.isdigit() for p in x.split("-")),
+            validate=is_valid_inquirer_date,
         ),
     ]
     date_answers = inquirer.prompt(date_questions)
     if not date_answers:
-        console.print("[yellow]Selection cancelled.[/yellow]")
+        print_cancelled()
         return
 
     game_date = date_answers["game_date"]
 
-    # Team selection using arrow keys
+    # Team selection using team service
     console.print()
-    team_a = select_team("Select Team A (use arrow keys)")
+    team_a = team_service.select_team_interactive("Select Team A (use arrow keys)")
     if not team_a:
-        console.print("[yellow]Selection cancelled.[/yellow]")
+        print_cancelled()
         return
 
-    team_b = select_team("Select Team B (use arrow keys)")
+    team_b = team_service.select_team_interactive("Select Team B (use arrow keys)")
     if not team_b:
-        console.print("[yellow]Selection cancelled.[/yellow]")
+        print_cancelled()
         return
 
     # Home team selection
@@ -398,71 +197,74 @@ def predict_game():
     ]
     home_answers = inquirer.prompt(home_questions)
     if not home_answers:
-        console.print("[yellow]Selection cancelled.[/yellow]")
+        print_cancelled()
         return
 
     home_team = home_answers["home"]
 
-    # Display matchup with rich formatting
+    # Get team abbreviations using team service
+    team_a_abbr = team_service.get_team_abbreviation(team_a)
+    team_b_abbr = team_service.get_team_abbreviation(team_b)
+    home_abbr = team_a_abbr if home_team == team_a else team_b_abbr
+    away_abbr = team_b_abbr if home_team == team_a else team_a_abbr
+
+    # Display matchup
     console.print()
+    from rich.panel import Panel
     matchup_text = f"[bold white]{team_a}[/bold white] @ [bold white]{team_b}[/bold white] - {game_date}\n"
     matchup_text += f"[dim]HOME: {home_team}[/dim]"
     console.print(Panel(matchup_text, title="[bold green]⚡ MATCHUP ⚡[/bold green]", border_style="green"))
 
-    # Check if this game was already predicted today
-    was_predicted, filepath = was_game_predicted_today(game_date, team_a, team_b, home_team)
+    # Check if this game was already predicted today using metadata service
+    was_predicted, game_key = predictions_metadata_service.was_game_predicted_today(
+        game_date, team_a_abbr, team_b_abbr, home_abbr
+    )
 
-    if was_predicted and os.path.exists(filepath):
-        console.print()
-        console.print("[cyan]📋 This game was already predicted today. Loading existing prediction...[/cyan]\n")
+    if was_predicted:
+        # Try to load existing prediction
+        filepath = get_file_path("nfl", "predictions", "prediction", game_date=game_date, team_a_abbr=home_abbr, team_b_abbr=away_abbr)
+        if os.path.exists(filepath):
+            console.print()
+            print_info("📋 This game was already predicted today. Loading existing prediction...")
+            console.print()
 
-        # Load and display existing prediction
-        try:
-            with open(filepath, encoding="utf-8") as f:
-                content = f.read()
-                # Extract just the prediction part (skip header)
-                prediction_content = content.split("---\n", 1)[1] if "---\n" in content else content
+            try:
+                with open(filepath, encoding="utf-8") as f:
+                    content = f.read()
+                    # Extract just the prediction part (skip header)
+                    prediction_content = content.split("---\n", 1)[1] if "---\n" in content else content
 
-            console.print(Panel(Markdown(prediction_content), title="[bold green]🎯 PARLAYS 🎯[/bold green]", border_style="green", padding=(1, 2)))
+                from rich.markdown import Markdown
+                console.print(Panel(Markdown(prediction_content), title="[bold green]🎯 PARLAYS 🎯[/bold green]", border_style="green", padding=(1, 2)))
+                console.print(f"\n[green]✓[/green] [dim]Using prediction from {filepath}[/dim]")
+                return
+            except Exception as e:
+                print_error(f"Could not load existing prediction: {str(e)}")
+                print_info("Generating new prediction...")
+                console.print()
 
-            team_a_abbr = get_team_abbreviation(team_a)
-            team_b_abbr = get_team_abbreviation(team_b)
-            filename = f"{team_a_abbr}_{team_b_abbr}.md" if home_team == team_a else f"{team_b_abbr}_{team_a_abbr}.md"
-            console.print(f"\n[green]✓[/green] [dim]Using prediction from {filepath}[/dim]")
-            return
-
-        except Exception as e:
-            console.print(f"[yellow]⚠ Could not load existing prediction: {str(e)}[/yellow]")
-            console.print("[cyan]Generating new prediction...[/cyan]\n")
-
-    # Auto-fetch rankings if needed using OOP architecture
+    # Auto-fetch rankings if needed
     if not nfl_sport.scraper.rankings_metadata_mgr.was_scraped_today():
         console.print()
-        console.print("[cyan]📊 Fetching fresh rankings data...[/cyan]")
+        print_info("📊 Fetching fresh rankings data...")
         nfl_sport.scraper.extract_rankings()
 
-    # Load ranking data with spinner using OOP architecture
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console
-    ) as progress:
-        progress.add_task(description="Loading ranking data...", total=None)
+    # Load ranking data with spinner
+    with create_spinner_progress():
+        print_info("Loading ranking data...")
         rankings = nfl_sport.predictor.load_ranking_tables()
 
     if not rankings:
-        console.print("[bold red]✗ Error:[/bold red] Could not load ranking data. Please check your internet connection.")
+        print_error("Could not load ranking data. Please check your internet connection.")
         return
 
-    # Load or extract team profiles
+    # Load team profiles using profile service
     console.print()
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console
-    ) as progress:
-        progress.add_task(description="Loading team profile data...", total=None)
-        profile_a, profile_b = load_team_profiles(team_a, team_b)
+    with create_spinner_progress():
+        print_info("Loading team profile data...")
+        profiles = profile_service.load_team_profiles(team_a, team_b)
+        profile_a = profiles.get(team_a)
+        profile_b = profiles.get(team_b)
 
     # Validate that we have profile data - profiles are REQUIRED
     if not profile_a or not profile_b:
@@ -480,15 +282,35 @@ def predict_game():
         console.print(Panel(error_text, border_style="red", padding=(1, 2)))
         return
 
-    # Generate parlays with spinner using OOP architecture
+    # Load betting odds (REQUIRED) using odds service
     console.print()
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console
-    ) as progress:
-        progress.add_task(description="Generating AI parlays with 80%+ confidence...", total=None)
-        result = nfl_sport.predictor.generate_parlays(team_a, team_b, home_team, rankings, profile_a, profile_b)
+    print_info("📊 Loading betting odds (required)...")
+    odds_data = odds_service.load_odds_for_game(game_date, team_a_abbr, team_b_abbr, home_abbr)
+
+    if not odds_data:
+        console.print()
+        error_text = "[bold red]ERROR: Betting odds are required[/bold red]\n\n"
+        error_text += "[yellow]Predictions now require odds for accurate analysis.[/yellow]\n\n"
+        error_text += "Please fetch odds first:\n"
+        error_text += "1. Save DraftKings HTML from game page to your desktop\n"
+        error_text += f"2. Run: [cyan]python main.py → NFL → Fetch Odds[/cyan]\n"
+        error_text += f"3. Select the HTML file\n\n"
+        error_text += f"[dim]Expected file: nfl/data/odds/{game_date}/{home_abbr}_{away_abbr}.json[/dim]"
+        console.print(Panel(error_text, border_style="red", padding=(1, 2)))
+        return
+
+    print_success("Loaded betting odds from DraftKings")
+    # Display summary of available odds
+    game_lines_count = len(odds_data.get("game_lines", {}))
+    player_props_count = len(odds_data.get("player_props", []))
+    console.print(f"[dim]  • Game lines: {game_lines_count}[/dim]")
+    console.print(f"[dim]  • Player props: {player_props_count} players[/dim]")
+
+    # Generate parlays with spinner
+    console.print()
+    with create_spinner_progress():
+        console.print("Generating AI parlays with 80%+ confidence...")
+        result = nfl_sport.predictor.generate_parlays(team_a, team_b, home_team, rankings, profile_a, profile_b, odds_data)
 
     # Check if API call was successful
     if not result.get("success", False):
@@ -514,49 +336,36 @@ def predict_game():
 
     # Display result with markdown rendering
     console.print()
+    from rich.markdown import Markdown
     console.print(Panel(Markdown(prediction_text), title="[bold green]🎯 PARLAYS 🎯[/bold green]", border_style="green", padding=(1, 2)))
 
-    # Display cost information
-    console.print(f"\n[dim]Model: {model}[/dim]")
-    console.print(f"[dim]Tokens: {tokens['input']:,} input, {tokens['output']:,} output ({tokens['total']:,} total)[/dim]")
-    console.print(f"[bold cyan]API Cost: ${cost:.4f}[/bold cyan]")
+    # Display cost information using console utils
+    print_cost_info(cost, tokens['input'], tokens['output'], tokens['total'])
+    console.print(f"[dim]Model: {model}[/dim]")
 
     # Wrap file save and metadata update in try-catch
     try:
-        # Save to markdown and JSON
-        save_prediction_to_markdown(game_date, team_a, team_b, home_team, prediction_text, cost, model, tokens)
+        # Save to markdown and JSON using repository
+        save_prediction_to_markdown(
+            game_date, team_a, team_b, home_team,
+            team_a_abbr, team_b_abbr,
+            prediction_text, cost, model, tokens
+        )
 
-        # Update predictions metadata ONLY after successful file save
-        metadata = load_predictions_metadata()
-        team_a_abbr = get_team_abbreviation(team_a)
-        team_b_abbr = get_team_abbreviation(team_b)
+        # Update predictions metadata using service
+        predictions_metadata_service.mark_game_predicted(
+            game_key,
+            game_date,
+            [team_a, team_b],
+            home_team,
+            home_abbr,
+            odds_used=True,
+            odds_source="draftkings"
+        )
 
-        if home_team == team_a:
-            game_key = f"{game_date}_{team_a_abbr}_{team_b_abbr}"
-        else:
-            game_key = f"{game_date}_{team_b_abbr}_{team_a_abbr}"
-
-        # Get home team PFR abbreviation for boxscore URL
-        home_team_pfr_abbr = None
-        for team in TEAMS:
-            if team["name"] == home_team:
-                home_team_pfr_abbr = team["pfr_abbr"]
-                break
-
-        # Save enhanced metadata structure
-        metadata[game_key] = {
-            "last_predicted": date.today().isoformat(),
-            "results_fetched": False,
-            "game_date": game_date,
-            "teams": [team_a, team_b],
-            "home_team": home_team,
-            "home_team_abbr": home_team_pfr_abbr
-        }
-        save_predictions_metadata(metadata)
-
-        # Display save confirmation with correct filename format (home team first, abbreviations)
-        filename = f"{team_a_abbr}_{team_b_abbr}.md" if home_team == team_a else f"{team_b_abbr}_{team_a_abbr}.md"
-        console.print(f"\n[green]✓[/green] [dim]Saved to nfl/data/predictions/{game_date}/{filename}[/dim]")
+        # Display save confirmation
+        filename = f"{home_abbr}_{away_abbr}.md"
+        print_success(f"Saved to nfl/data/predictions/{game_date}/{filename}")
 
     except Exception as e:
         console.print()

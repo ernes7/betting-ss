@@ -167,13 +167,15 @@ st.markdown("""
 def load_all_predictions() -> list[dict]:
     """Load all prediction JSON files from NFL and NBA data directories.
 
+    Includes both parlay predictions and EV+ singles predictions.
+
     Returns:
         List of prediction dictionaries with file paths
     """
     predictions = []
     base_dir = Path(__file__).parent
 
-    # Scan NFL predictions
+    # Scan NFL predictions (parlays)
     nfl_dir = base_dir / "nfl" / "data" / "predictions"
     if nfl_dir.exists():
         for json_file in nfl_dir.rglob("*.json"):
@@ -183,14 +185,33 @@ def load_all_predictions() -> list[dict]:
                 with open(json_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     data['file_path'] = str(json_file)
-                    # Extract game key from path
                     data['game_key'] = json_file.stem
                     data['game_date'] = json_file.parent.name
+                    if 'prediction_type' not in data:
+                        data['prediction_type'] = 'parlays'
                     predictions.append(data)
             except Exception as e:
                 st.error(f"Error loading {json_file}: {e}")
 
-    # Scan NBA predictions
+    # Scan NFL EV+ singles predictions
+    nfl_ev_dir = base_dir / "nfl" / "data" / "predictions_ev"
+    if nfl_ev_dir.exists():
+        for json_file in nfl_ev_dir.rglob("*.json"):
+            if json_file.name == ".metadata.json":
+                continue
+            try:
+                with open(json_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    data['file_path'] = str(json_file)
+                    data['game_key'] = json_file.stem
+                    data['game_date'] = json_file.parent.name
+                    if 'prediction_type' not in data:
+                        data['prediction_type'] = 'ev_singles'
+                    predictions.append(data)
+            except Exception as e:
+                st.error(f"Error loading {json_file}: {e}")
+
+    # Scan NBA predictions (parlays)
     nba_dir = base_dir / "nba" / "data" / "predictions"
     if nba_dir.exists():
         for json_file in nba_dir.rglob("*.json"):
@@ -202,6 +223,26 @@ def load_all_predictions() -> list[dict]:
                     data['file_path'] = str(json_file)
                     data['game_key'] = json_file.stem
                     data['game_date'] = json_file.parent.name
+                    if 'prediction_type' not in data:
+                        data['prediction_type'] = 'parlays'
+                    predictions.append(data)
+            except Exception as e:
+                st.error(f"Error loading {json_file}: {e}")
+
+    # Scan NBA EV+ singles predictions (future)
+    nba_ev_dir = base_dir / "nba" / "data" / "predictions_ev"
+    if nba_ev_dir.exists():
+        for json_file in nba_ev_dir.rglob("*.json"):
+            if json_file.name == ".metadata.json":
+                continue
+            try:
+                with open(json_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    data['file_path'] = str(json_file)
+                    data['game_key'] = json_file.stem
+                    data['game_date'] = json_file.parent.name
+                    if 'prediction_type' not in data:
+                        data['prediction_type'] = 'ev_singles'
                     predictions.append(data)
             except Exception as e:
                 st.error(f"Error loading {json_file}: {e}")
@@ -245,22 +286,73 @@ def load_all_analyses() -> dict:
     return analyses
 
 
-def merge_predictions_with_analyses(predictions: list[dict], analyses: dict) -> list[dict]:
-    """Merge prediction data with analysis results.
+def load_all_ev_analyses() -> dict:
+    """Load all EV analysis JSON files (with P/L data from Claude AI) and create lookup by game key.
+
+    Returns:
+        Dictionary mapping game_key to EV analysis data (including P/L)
+    """
+    ev_analyses = {}
+    base_dir = Path(__file__).parent
+
+    # Scan NFL EV analyses
+    nfl_ev_dir = base_dir / "nfl" / "data" / "analysis_ev"
+    if nfl_ev_dir.exists():
+        for json_file in nfl_ev_dir.rglob("*.json"):
+            try:
+                with open(json_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    game_key = json_file.stem
+                    ev_analyses[game_key] = data
+            except Exception as e:
+                pass  # Silently skip errors
+
+    # Scan NBA EV analyses (future)
+    nba_ev_dir = base_dir / "nba" / "data" / "analysis_ev"
+    if nba_ev_dir.exists():
+        for json_file in nba_ev_dir.rglob("*.json"):
+            try:
+                with open(json_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    game_key = json_file.stem
+                    ev_analyses[game_key] = data
+            except Exception as e:
+                pass  # Silently skip errors
+
+    return ev_analyses
+
+
+def merge_predictions_with_analyses(predictions: list[dict], analyses: dict, ev_analyses: dict = None) -> list[dict]:
+    """Merge prediction data with analysis results and EV analyses.
 
     Args:
         predictions: List of prediction dictionaries
-        analyses: Dictionary of analyses by game_key
+        analyses: Dictionary of analyses by game_key (for parlays)
+        ev_analyses: Dictionary of EV analyses by game_key (with P/L data from Claude AI)
 
     Returns:
         List of predictions with analysis data merged
     """
+    if ev_analyses is None:
+        ev_analyses = {}
+
     for pred in predictions:
         game_key = pred.get('game_key')
-        if game_key in analyses:
-            pred['analysis'] = analyses[game_key]
+        prediction_type = pred.get('prediction_type', 'parlays')
+
+        if prediction_type == 'ev_singles':
+            # Merge EV analysis (P/L data from Claude AI)
+            if game_key in ev_analyses:
+                pred['ev_analysis'] = ev_analyses[game_key]
+            else:
+                pred['ev_analysis'] = None
         else:
-            pred['analysis'] = None
+            # Merge parlay analysis
+            if game_key in analyses:
+                pred['analysis'] = analyses[game_key]
+            else:
+                pred['analysis'] = None
+
     return predictions
 
 
@@ -507,8 +599,131 @@ def render_parlay_with_analysis(parlay: dict, parlay_result: dict = None, index:
     st.divider()
 
 
+def render_ev_prediction_card(prediction: dict, index: int):
+    """Render EV+ Singles prediction card with P/L data from Claude AI analysis."""
+    from nfl.constants import FIXED_BET_AMOUNT
+
+    # Extract data
+    teams = prediction.get("teams", ["Unknown", "Unknown"])
+    home_team = prediction.get("home_team", "Unknown")
+    sport = prediction.get("sport", "unknown").upper()
+    date = prediction.get("date", prediction.get("game_date", "Unknown"))
+    ev_analysis = prediction.get("ev_analysis")
+    bets = prediction.get("bets", [])
+
+    # Sport emoji
+    sport_emoji = "🏈" if sport == "NFL" else "🏀" if sport == "NBA" else "🎯"
+
+    # Build matchup string
+    matchup = f"{teams[0]} vs {teams[1]}"
+
+    # Expander title with P/L
+    if ev_analysis:
+        summary = ev_analysis.get('summary', {})
+        total_profit = summary.get('total_profit', 0)
+        win_rate = summary.get('win_rate', 0)
+        profit_emoji = "💰" if total_profit >= 0 else "📉"
+        status_text = f"{profit_emoji} ${total_profit:+.2f} P/L | {win_rate:.0f}% Win Rate"
+    else:
+        status_text = "⏳ Analysis Pending"
+
+    formatted_date = format_date(date)
+    expander_title = f"{sport_emoji} **{matchup}** | {formatted_date} | {status_text}"
+
+    with st.expander(expander_title, expanded=False):
+        # Header metrics
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric("Home Team", home_team)
+
+        with col2:
+            avg_ev = prediction.get("summary", {}).get("avg_ev", 0) if prediction.get("summary") else 0
+            st.metric("Avg EV%", f"+{avg_ev:.1f}%" if avg_ev else "N/A")
+
+        with col3:
+            api_cost = prediction.get("api_cost", 0)
+            st.metric("API Cost", f"${api_cost:.4f}")
+
+        with col4:
+            if ev_analysis:
+                total_profit = ev_analysis['summary']['total_profit']
+                st.metric("Profit/Loss", f"${total_profit:+.2f}")
+
+        st.divider()
+
+        # Show P/L summary if available
+        if ev_analysis:
+            summary = ev_analysis['summary']
+            col1, col2, col3, col4 = st.columns(4)
+
+            with col1:
+                st.markdown(f"**Total Bets:** {summary['total_bets']}")
+
+            with col2:
+                st.markdown(f"**Bets Won:** {summary['bets_won']} / {summary['total_bets']}")
+
+            with col3:
+                st.markdown(f"**Win Rate:** {summary['win_rate']:.1f}%")
+
+            with col4:
+                st.markdown(f"**ROI:** {summary['roi_percent']:+.1f}%")
+
+            st.divider()
+
+        # Render all bets
+        bet_results = ev_analysis.get('bet_results', []) if ev_analysis else []
+
+        for i, bet in enumerate(bets):
+            # Match bet with result
+            bet_result = bet_results[i] if i < len(bet_results) else None
+
+            st.markdown(f"#### Bet #{i+1}: {bet.get('bet', 'Unknown')}")
+
+            col1, col2, col3, col4 = st.columns(4)
+
+            with col1:
+                st.markdown(f"**Odds:** +{bet.get('odds', 0)}")
+
+            with col2:
+                st.markdown(f"**EV:** +{bet.get('expected_value', 0):.1f}%")
+
+            with col3:
+                kelly_half = bet.get('kelly_half', 0)
+                st.markdown(f"**Kelly Half:** {kelly_half:.1f}%")
+
+            with col4:
+                if bet_result:
+                    won = bet_result.get('won', False)
+                    profit = bet_result.get('profit', 0)
+                    badge_class = "badge-hit" if won else "badge-miss"
+                    badge_text = f"WON ${profit:+.2f}" if won else f"LOST ${profit:.2f}"
+                    st.markdown(f"<span class='{badge_class}'>{badge_text}</span>", unsafe_allow_html=True)
+                else:
+                    st.markdown("<span class='badge-pending'>PENDING</span>", unsafe_allow_html=True)
+
+            # Show reasoning
+            reasoning = bet.get('reasoning', '')
+            if reasoning:
+                with st.expander("View Reasoning"):
+                    st.markdown(reasoning)
+
+            st.divider()
+
+
 def render_prediction_card(prediction: dict, index: int):
     """Render modern prediction card with glassmorphism and analysis integration."""
+    # Check prediction type and route to appropriate renderer
+    prediction_type = prediction.get("prediction_type", "parlays")
+
+    if prediction_type == "ev_singles":
+        render_ev_prediction_card(prediction, index)
+    else:
+        render_parlay_prediction_card(prediction, index)
+
+
+def render_parlay_prediction_card(prediction: dict, index: int):
+    """Render parlay prediction card."""
     # Extract data
     teams = prediction.get("teams", ["Unknown", "Unknown"])
     home_team = prediction.get("home_team", "Unknown")
@@ -603,7 +818,8 @@ def main():
     # Load all data
     predictions = load_all_predictions()
     analyses = load_all_analyses()
-    predictions = merge_predictions_with_analyses(predictions, analyses)
+    ev_analyses = load_all_ev_analyses()
+    predictions = merge_predictions_with_analyses(predictions, analyses, ev_analyses)
 
     # Sort by date (newest first)
     predictions.sort(key=lambda x: x.get("generated_at", ""), reverse=True)
@@ -621,13 +837,30 @@ def main():
     overall_hit_rate = (total_hit / total_parlays * 100) if total_parlays > 0 else 0
     leg_hit_rate = (legs_hit / total_legs * 100) if total_legs > 0 else 0
 
-    # Hero metrics
+    # Calculate EV metrics (P/L stats from Claude AI analysis)
+    ev_preds_with_analysis = [p for p in predictions if p.get('prediction_type') == 'ev_singles' and p.get('ev_analysis')]
+    total_ev_profit = sum([p['ev_analysis']['summary']['total_profit'] for p in ev_preds_with_analysis]) if ev_preds_with_analysis else 0
+    total_ev_bets = sum([p['ev_analysis']['summary']['total_bets'] for p in ev_preds_with_analysis]) if ev_preds_with_analysis else 0
+    total_ev_bets_won = sum([p['ev_analysis']['summary']['bets_won'] for p in ev_preds_with_analysis]) if ev_preds_with_analysis else 0
+    ev_win_rate = (total_ev_bets_won / total_ev_bets * 100) if total_ev_bets > 0 else 0
+
+    # Calculate ROI (assuming fixed bet amount of $100)
+    from nfl.constants import FIXED_BET_AMOUNT
+    total_ev_risk = total_ev_bets * FIXED_BET_AMOUNT if total_ev_bets > 0 else 1
+    ev_roi = (total_ev_profit / total_ev_risk * 100) if total_ev_risk > 0 else 0
+
+    # Separate parlays and EV predictions for display
+    parlay_count = len([p for p in predictions if p.get('prediction_type') == 'parlays'])
+    ev_count = len([p for p in predictions if p.get('prediction_type') == 'ev_singles'])
+
+    # Hero metrics - Split into Parlay and EV sections
+    st.markdown("### 🎲 Parlay Predictions")
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         st.metric(
-            "Total Predictions",
-            len(predictions),
+            "Total Parlays",
+            parlay_count,
             delta=f"{len(analyzed_preds)} analyzed"
         )
 
@@ -649,8 +882,54 @@ def main():
         )
 
     with col4:
-        total_cost = sum([p.get('api_cost', 0) for p in predictions])
+        # Sum both prediction costs and analysis costs
+        prediction_cost = sum([p.get('api_cost', 0) for p in predictions])
+        analysis_cost = sum([p.get('analysis', {}).get('api_cost', 0) for p in predictions if p.get('analysis')])
+        total_cost = prediction_cost + analysis_cost
         st.metric("Total API Cost", f"${total_cost:.2f}")
+
+    st.divider()
+
+    # EV+ Singles metrics (P/L focused)
+    st.markdown("### 💰 EV+ Singles (Profit/Loss Tracking)")
+    ev_col1, ev_col2, ev_col3, ev_col4 = st.columns(4)
+
+    with ev_col1:
+        profit_color = "#38ef7d" if total_ev_profit >= 0 else "#f45c43"
+        st.markdown(f"""
+            <div style='text-align: center;'>
+                <div style='font-size: 0.9rem; color: rgba(255,255,255,0.8);'>Total Profit/Loss</div>
+                <div style='font-size: 2.5rem; font-weight: 700; color: {profit_color};'>${total_ev_profit:+.2f}</div>
+                <div style='font-size: 0.8rem; color: rgba(255,255,255,0.6);'>Fixed ${FIXED_BET_AMOUNT} per bet</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with ev_col2:
+        st.metric(
+            "Total Bets",
+            total_ev_bets,
+            delta=f"{len(ev_preds_with_analysis)} games tracked"
+        )
+
+    with ev_col3:
+        win_color = "#38ef7d" if ev_win_rate >= 50 else "#f45c43"
+        st.markdown(f"""
+            <div style='text-align: center;'>
+                <div style='font-size: 0.9rem; color: rgba(255,255,255,0.8);'>Win Rate</div>
+                <div style='font-size: 2rem; font-weight: 700; color: {win_color};'>{ev_win_rate:.1f}%</div>
+                <div style='font-size: 0.8rem; color: rgba(255,255,255,0.6);'>{total_ev_bets_won}/{total_ev_bets} bets</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with ev_col4:
+        roi_color = "#38ef7d" if ev_roi >= 0 else "#f45c43"
+        st.markdown(f"""
+            <div style='text-align: center;'>
+                <div style='font-size: 0.9rem; color: rgba(255,255,255,0.8);'>ROI</div>
+                <div style='font-size: 2rem; font-weight: 700; color: {roi_color};'>{ev_roi:+.1f}%</div>
+                <div style='font-size: 0.8rem; color: rgba(255,255,255,0.6);'>${total_ev_profit:+.2f} / ${total_ev_risk:.0f}</div>
+            </div>
+        """, unsafe_allow_html=True)
 
     st.divider()
 
@@ -667,6 +946,10 @@ def main():
     # Sport filter
     sport_options = ["All", "NFL", "NBA"]
     selected_sport = st.sidebar.selectbox("Sport", sport_options, index=0)
+
+    # Prediction Type filter
+    type_options = ["All", "Parlays", "EV+ Singles"]
+    selected_type = st.sidebar.selectbox("Prediction Type", type_options, index=0)
 
     # Date filter
     unique_dates = sorted(set([p.get("game_date", p.get("date", "")) for p in predictions]), reverse=True)
@@ -696,6 +979,16 @@ def main():
         filtered_predictions = [
             p for p in filtered_predictions
             if p.get("sport", "").upper() == selected_sport
+        ]
+
+    if selected_type != "All":
+        type_map = {
+            "Parlays": "parlays",
+            "EV+ Singles": "ev_singles"
+        }
+        filtered_predictions = [
+            p for p in filtered_predictions
+            if p.get("prediction_type", "parlays") == type_map[selected_type]
         ]
 
     if selected_date != "All":

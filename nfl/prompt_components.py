@@ -6,14 +6,16 @@ class NFLPromptComponents:
 
     sport_name = "NFL"
 
-    bet_types_list = """  * QB passing yards O/U (e.g., "Justin Herbert Over 265.5 passing yards")
+    bet_types_list = """  * Moneyline - underdog wins with positive odds (e.g., "Panthers ML +625", "Bears ML +124")
+  * Spread - underdog covers with positive odds (e.g., "Panthers +12.5 -102", "Vikings +8.5 -105")
+  * QB passing yards O/U (e.g., "Justin Herbert Over 265.5 passing yards")
   * RB rushing yards O/U (e.g., "Aaron Jones Over 55.5 rushing yards")
   * WR receiving yards O/U (e.g., "Justin Jefferson Over 75.5 receiving yards")
   * Player receptions O/U (e.g., "Justin Jefferson Over 6.5 receptions")
   * QB pass completions O/U (e.g., "Justin Herbert Over 22.5 completions")
   * QB pass attempts O/U (e.g., "Justin Herbert Over 35.5 attempts")
   * Player rush attempts O/U (e.g., "Aaron Jones Over 18.5 rush attempts")
-  * Player anytime TD / touchdown scorers (e.g., "Justin Jefferson anytime TD")
+  * Player anytime TD / touchdown scorers (e.g., "Justin Jefferson anytime TD", "Cole Kmet anytime TD +340")
   * Individual defensive player sacks O/U (PLAYER SPECIFIC ONLY - e.g., "Joey Bosa Over 0.5 sacks")
   * Defensive player tackles + assists O/U (e.g., "Roquan Smith Over 8.5 tackles+assists")
   * Individual defensive player interceptions O/U (PLAYER SPECIFIC ONLY - e.g., "Sauce Gardner Over 0.5 interceptions")
@@ -30,7 +32,16 @@ class NFLPromptComponents:
 - DO NOT include any player with injury status (Out, Questionable, Doubtful, etc.) in prop bets
 - Injured players should ONLY be mentioned in reasoning to explain team weaknesses/strengths"""
 
-    stat_tables_to_analyze = "team_stats, passing, rushing_receiving, defense_fumbles, touchdown_log, scoring_summary, injury_report"
+    stat_tables_to_analyze = """
+  RANKING TABLES (league-wide, 2 teams extracted with rank/percentile): 
+    afc_standings, nfc_standings, passing_offense, rushing_offense, scoring_offense, 
+  team_offense
+
+  TEAM PROFILE TABLES (per team, optimized): 
+    - Full tables: team_stats, schedule_results, injury_report
+    - Filtered tables: passing (top 2 QBs), top_rushers (top 5), top_receivers (top 5), 
+  defense_fumbles (top 10)
+  """
 
     conservative_line_rules = """CONSERVATIVE LINE SELECTION (CRITICAL):
 - Yardage props (passing/rushing/receiving yards): Pick lines 30% BELOW player's season average
@@ -56,4 +67,6 @@ class NFLPromptComponents:
 
 RULE: If betting on a blowout win, favor the WINNER's rushing props and LOSER's passing props"""
 
-    important_notes = "IMPORTANT: Before generating parlays, check injury_report data to exclude all injured players from prop bets."
+    important_notes = """IMPORTANT PRE-GAME VERIFICATION CHECKLIST:
+ 1. Check injury_report: Exclude all injured players from prop bets
+ 2. Respect elite defenses: Top 5 defenses suppress featured player production"""
