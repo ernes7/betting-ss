@@ -114,8 +114,8 @@ def parse_ev_singles_text(prediction_text: str) -> list[dict]:
     """
     bets = []
 
-    # Pattern to match EV singles output format
-    bet_pattern = r'## Bet (\d+):.+?\n\*\*Bet\*\*: (.+?)\n\*\*Odds\*\*: ([+-]?\d+)\n\*\*Implied Probability\*\*: ([\d.]+)%[^\n]*\n\*\*True Probability\*\*: ([\d.]+)%[^\n]*\n\*\*Expected Value\*\*: \+?([\d.]+)%[^\n]*\n\*\*Kelly Criterion\*\*: ([\d.]+)%[^:]+half: ([\d.]+)%[^\n]*\n\*\*Reasoning\*\*: (.+?)(?=\n##|\Z)'
+    # Pattern to match EV singles output format (updated to match "Calculation" field)
+    bet_pattern = r'## Bet (\d+):.+?\n\*\*Bet\*\*: (.+?)\n\*\*Odds\*\*: ([+-]?\d+)\n\*\*Implied Probability\*\*: ([\d.]+)%[^\n]*\n\*\*True Probability\*\*: ([\d.]+)%[^\n]*\n\*\*Expected Value\*\*: \+?([\d.]+)%[^\n]*\n\*\*Kelly Criterion\*\*: ([\d.]+)%[^:]+half: ([\d.]+)%[^\n]*\n\n\*\*Calculation\*\*:\n(.+?)(?=\n##|\Z)'
 
     for match in re.finditer(bet_pattern, prediction_text, re.DOTALL):
         bets.append({
@@ -129,6 +129,11 @@ def parse_ev_singles_text(prediction_text: str) -> list[dict]:
             "kelly_half": float(match.group(8)),
             "reasoning": match.group(9).strip()
         })
+
+    # Validation: warn if less than 5 bets were parsed
+    if len(bets) < 5:
+        print(f"[yellow]⚠ Warning: Only parsed {len(bets)} bets out of expected 5[/yellow]")
+        print("[yellow]  This may indicate a truncated or malformed response[/yellow]")
 
     return bets
 

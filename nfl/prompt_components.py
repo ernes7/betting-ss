@@ -32,7 +32,16 @@ class NFLPromptComponents:
 - DO NOT include any player with injury status (Out, Questionable, Doubtful, etc.) in prop bets
 - Injured players should ONLY be mentioned in reasoning to explain team weaknesses/strengths"""
 
-    stat_tables_to_analyze = "team_stats, passing, rushing_receiving, defense_fumbles, touchdown_log, scoring_summary, injury_report"
+    stat_tables_to_analyze = """
+  RANKING TABLES (league-wide, 2 teams extracted with rank/percentile): 
+    afc_standings, nfc_standings, passing_offense, rushing_offense, scoring_offense, 
+  team_offense
+
+  TEAM PROFILE TABLES (per team, optimized): 
+    - Full tables: team_stats, schedule_results, injury_report
+    - Filtered tables: passing (top 2 QBs), top_rushers (top 5), top_receivers (top 5), 
+  defense_fumbles (top 10)
+  """
 
     conservative_line_rules = """CONSERVATIVE LINE SELECTION (CRITICAL):
 - Yardage props (passing/rushing/receiving yards): Pick lines 30% BELOW player's season average
@@ -58,4 +67,6 @@ class NFLPromptComponents:
 
 RULE: If betting on a blowout win, favor the WINNER's rushing props and LOSER's passing props"""
 
-    important_notes = "IMPORTANT: Before generating parlays, check injury_report data to exclude all injured players from prop bets."
+    important_notes = """IMPORTANT PRE-GAME VERIFICATION CHECKLIST:
+ 1. Check injury_report: Exclude all injured players from prop bets
+ 2. Respect elite defenses: Top 5 defenses suppress featured player production"""

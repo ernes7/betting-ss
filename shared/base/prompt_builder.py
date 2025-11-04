@@ -203,8 +203,6 @@ Calculate optimal stake sizing using Kelly Criterion.
 METHODOLOGY:
 
 1. CONVERT ODDS TO IMPLIED PROBABILITY:
-   - Negative odds: |odds| / (|odds| + 100)
-     Example: -110 = 110 / (110 + 100) = 52.4%
    - Positive odds: 100 / (odds + 100)
      Example: +150 = 100 / (150 + 100) = 40.0%
 
@@ -229,23 +227,13 @@ METHODOLOGY:
      * Half Kelly = 14.7% of bankroll (recommended)
 
 REQUIREMENTS:
-- Individual bets ONLY (absolutely NO parlays)
-- Consider ALL available bet types:
-  * Moneyline, Spread, Game Totals
-{sport_components.bet_types_list}
-- Use DraftKings milestone odds to find optimal lines
-- Each bet must have EV ≥ +3.0%
-- Conservative true probability estimates
-- Analyze opportunities from BOTH teams
-- Only use healthy players with consistent stats
+- Exactly 5 individual bets (NO parlays, NO duplicates, NO replacements)
+- Consider ALL bet types: Moneyline, Spread, Game Totals, {sport_components.bet_types_list}
+- Bet type diversity: Maximum 3 yardage props (prefer different categories when possible)
+- Conservative probability estimates (reduce raw estimates by 10-15% for safety)
+- Only healthy players with consistent stats (8+ games preferred)
 {sport_components.injury_instructions}
-- Prioritize props with large sample sizes (8+ games)
-- BET TYPE DIVERSITY REQUIREMENT:
-  * Include variety across bet categories when possible
-  * At least 1 non-yardage bet if +3% EV exists (moneyline, spread, total, TD, receptions, attempts)
-  * Maximum 3 yardage props (passing/rushing/receiving yards combined) out of 5 total bets
-  * Prioritize different players and bet types over stacking similar bets
-  * If all 5 highest EV bets are yardage props, explain why other bet types don't meet +3% threshold
+- Analyze opportunities from BOTH teams
 
 EVALUATING DIFFERENT BET TYPES:
 - Moneyline/Spread: Estimate team win probability from power ratings, scoring differential, home/away splits, injury impact
@@ -256,60 +244,64 @@ EVALUATING DIFFERENT BET TYPES:
 DATA:
 {data_context}
 
+VALIDATION REQUIREMENTS:
+- You MUST return exactly 5 bets - no more, no less
+- NO "NOTE" sections, NO self-corrections, NO replacement bets
+- If you cannot find 5 qualifying bets, return fewer and explain why in GAME ANALYSIS
+
 OUTPUT FORMAT (exactly 5 bets, ranked by EV highest to lowest):
 
 ## Bet 1: [Highest EV+]
 **Bet**: [Full description with exact line, e.g., "Patrick Mahomes Over 250.5 Passing Yards"]
-**Odds**: [American odds from DraftKings, e.g., "+150" or "-110"]
-**Implied Probability**: [X.X%] (calculated from odds)
-**True Probability**: [Y.Y%] (conservative estimate based on stats)
-**Expected Value**: [+Z.Z%] (true prob vs implied prob edge)
+**Odds**: [American odds, must be positive e.g., "+150"]
+**Implied Probability**: [X.X%]
+**True Probability**: [Y.Y%]
+**Expected Value**: [+Z.Z%]
 **Kelly Criterion**: [K.K%] full Kelly (recommend half: [H.H%] of bankroll)
-**Reasoning**: [3 sentences explaining: (1) specific stats supporting true probability (2) matchup advantage (3) why market is mispricing this
 
 ## Bet 2: [Second Highest EV+]
 **Bet**: [Full description with line]
-**Odds**: [American odds]
+**Odds**: [Positive American odds]
 **Implied Probability**: [X.X%]
 **True Probability**: [Y.Y%]
 **Expected Value**: [+Z.Z%]
 **Kelly Criterion**: [K.K%] full Kelly (recommend half: [H.H%])
-**Reasoning**: [3 sentences...]
 
 ## Bet 3: [Third Highest EV+]
 **Bet**: [Full description with line]
-**Odds**: [American odds]
+**Odds**: [Positive American odds]
 **Implied Probability**: [X.X%]
 **True Probability**: [Y.Y%]
 **Expected Value**: [+Z.Z%]
 **Kelly Criterion**: [K.K%] full Kelly (recommend half: [H.H%])
-**Reasoning**: [3 sentences...]
 
 ## Bet 4: [Fourth Highest EV+]
 **Bet**: [Full description with line]
-**Odds**: [American odds]
+**Odds**: [Positive American odds]
 **Implied Probability**: [X.X%]
 **True Probability**: [Y.Y%]
 **Expected Value**: [+Z.Z%]
 **Kelly Criterion**: [K.K%] full Kelly (recommend half: [H.H%])
-**Reasoning**: [3 sentences...]
 
 ## Bet 5: [Fifth Highest EV+]
 **Bet**: [Full description with line]
-**Odds**: [American odds]
+**Odds**: [Positive American odds]
 **Implied Probability**: [X.X%]
 **True Probability**: [Y.Y%]
 **Expected Value**: [+Z.Z%]
 **Kelly Criterion**: [K.K%] full Kelly (recommend half: [H.H%])
-**Reasoning**: [3 sentences...]
 
-CRITICAL RULES:
-- ONLY select bets with POSITIVE American odds (+100, +150, etc). NEVER use negative odds (-110, -150, etc) 
-- Show ALL calculations explicitly (implied prob, true prob, EV%, Kelly%)
-- Be conservative with true probabilities (account for small sample sizes, variance)
-- If player has <3 games, note uncertainty and reduce confidence
-- Reference SPECIFIC stats (e.g., "averages 78.5 yards last 5 games" not "good recent performance")
-- If you cannot find 5 bets with +3% EV, explain why the market appears efficient
+## GAME ANALYSIS & REASONING
+[2-3 paragraphs explaining:
+1. Overall matchup dynamics and key statistical edges for this game
+2. Why these specific 5 bets represent the highest EV opportunities (reference specific stats)
+3. Common factors across the selected bets (game script expectations, defensive weaknesses, weather, etc.)
+4. Any important context: injuries, trends, or why certain popular bets were excluded]
+
+FINAL REMINDERS:
+- Show ALL calculations explicitly
+- Be conservative with true probabilities (account for variance and small samples)
+- Reference SPECIFIC stats (e.g., "averages 78.5 yards last 5 games")
 - Never recommend more than half Kelly for any single bet"""
 
         return prompt

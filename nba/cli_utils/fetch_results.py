@@ -19,6 +19,7 @@ from shared.config import get_metadata_path
 from nba.nba_config import NBAConfig
 from nba.nba_results_fetcher import NBAResultsFetcher
 from nba.nba_analyzer import NBAAnalyzer
+from nba.teams import DK_TO_PBR_ABBR
 
 # Initialize services
 console = Console()
@@ -73,6 +74,72 @@ def wait_with_countdown(seconds: int, next_game_info: str, current: int, total: 
         time.sleep(0.1)
 
     console.print("\n")
+
+
+def fetch_game_result_with_fallback(config, fetcher, game_date, home_team_abbr_dk):
+    """Fetch game result with fallback abbreviation attempts.
+
+    Args:
+        config: NBAConfig instance
+        fetcher: NBAResultsFetcher instance
+        game_date: Game date string (YYYY-MM-DD)
+        home_team_abbr_dk: Home team DraftKings abbreviation
+
+    Returns:
+        tuple: (result_data, abbreviation_used) or raises exception
+    """
+    # Fallback mapping for teams with multiple abbreviations
+    FALLBACK_ABBRS = {
+        "bkn": ["bkn", "njn"],                 # Brooklyn Nets (formerly New Jersey)
+        "cha": ["cha", "cho"],                 # Charlotte Hornets
+        "nop": ["nop", "no"],                  # New Orleans Pelicans
+        "okc": ["okc", "sea"],                 # Oklahoma City Thunder (formerly Seattle)
+        "mem": ["mem", "van"],                 # Memphis Grizzlies (formerly Vancouver)
+    }
+
+    # Get PFR abbreviation from mapping first
+    pfr_abbr = DK_TO_PFR_ABBR.get(home_team_abbr_dk.upper())
+
+    # Build list of abbreviations to try
+    if pfr_abbr:
+        abbreviations_to_try = [pfr_abbr]
+    else:
+        abbreviations_to_try = [home_team_abbr_dk.lower()]
+
+    # Add fallback variants if available
+    if home_team_abbr_dk.lower() in FALLBACK_ABBRS:
+        for fallback in FALLBACK_ABBRS[home_team_abbr_dk.lower()]:
+            if fallback not in abbreviations_to_try:
+                abbreviations_to_try.append(fallback)
+
+    # Try each abbreviation
+    last_error = None
+    for abbr in abbreviations_to_try:
+        try:
+            boxscore_url = config.build_boxscore_url(game_date, abbr)
+            result_data = fetcher.extract_game_result(boxscore_url)
+
+            # Success! Return the result and which abbreviation worked
+            if abbr != abbreviations_to_try[0]:
+                console.print(f"  [dim][yellow]→ Used fallback abbreviation '{abbr}' (primary '{abbreviations_to_try[0]}' failed)[/yellow][/dim]")
+
+            return result_data, abbr
+
+        except Exception as e:
+            error_str = str(e)
+            if "404" in error_str or "not found" in error_str.lower():
+                last_error = e
+                # Try next abbreviation
+                continue
+            else:
+                # Non-404 error, raise immediately
+                raise
+
+    # All attempts failed
+    if last_error:
+        raise last_error
+    else:
+        raise Exception(f"Failed to fetch game result for all abbreviation variants: {abbreviations_to_try}")
 
 
 def fetch_results():
@@ -195,27 +262,27 @@ def fetch_results():
         console.print(f"\n[bold cyan]━━━ Game {idx}/{len(games_to_fetch)}: {matchup} ━━━[/bold cyan]")
 
         try:
-            # Build boxscore URL
-            boxscore_url = config.build_boxscore_url(game_date, home_team_abbr)
-
-            # Extract game result
+            # Fetch game result with fallback abbreviations
             console.print(f"  [dim]→ Fetching results from Basketball-Reference...[/dim]")
-            result_data = fetcher.extract_game_result(boxscore_url)
+            result_data, abbr_used = fetch_game_result_with_fallback(config, fetcher, game_date, home_team_abbr)
 
             # Add game_date to result (in case it's not already there)
             result_data["game_date"] = game_date
 
             # Save result using repository
             # Extract team abbreviations from game_key for save
-            # game_key format: "w8_los_angeles_chargers_minnesota_vikings" or "{date}_team1_team2"
+            # game_key format: "{date}_{home_abbr}_{away_abbr}" (e.g., "2025-11-02_cin_chi")
             parts = game_key.split("_")
             if parts[0] == game_date:
-                # Remove date prefix
-                filename = "_".join(parts[1:])
+                # Remove date prefix - remaining parts are home and away abbrs
+                home_abbr = parts[1] if len(parts) > 1 else home_team_abbr
+                away_abbr = parts[2] if len(parts) > 2 else "unknown"
             else:
-                filename = game_key
+                # Fallback: use metadata
+                home_abbr = home_team_abbr
+                away_abbr = "unknown"
 
-            results_repo.save_result(game_date, filename, result_data)
+            results_repo.save_result(game_date, away_abbr, home_abbr, result_data)
 
             # Update metadata using service
             metadata[game_key]["results_fetched"] = True
@@ -393,9 +460,8 @@ def fetch_ev_results():
             if game.get("needs_results", True):
                 console.print("  ├─ Fetching game results...", style="dim")
 
-                # Build boxscore URL
-                boxscore_url = config.build_boxscore_url(game_date, home_abbr)
-                result_data = fetcher.extract_game_result(boxscore_url)
+                # Fetch with fallback abbreviations
+                result_data, abbr_used = fetch_game_result_with_fallback(config, fetcher, game_date, home_abbr)
 
                 if not result_data:
                     console.print("  └─ [red]✗ No results found (game may not have been played yet)[/red]")
@@ -404,14 +470,19 @@ def fetch_ev_results():
 
                 # Save results using repository
                 console.print("  ├─ Saving game results...", style="dim")
-                # Extract filename from game_key
+                # Extract team abbreviations from game_key
+                # game_key format: "{date}_{home_abbr}_{away_abbr}" (e.g., "2025-11-02_cin_chi")
                 parts = game_key.split("_")
                 if parts[0] == game_date:
-                    filename = "_".join(parts[1:])
+                    # Remove date prefix - remaining parts are home and away abbrs
+                    home_abbr_extracted = parts[1] if len(parts) > 1 else home_abbr
+                    away_abbr = parts[2] if len(parts) > 2 else "unknown"
                 else:
-                    filename = game_key
+                    # Fallback: use metadata
+                    home_abbr_extracted = home_abbr
+                    away_abbr = "unknown"
 
-                results_repo.save_result(game_date, filename, result_data)
+                results_repo.save_result(game_date, away_abbr, home_abbr_extracted, result_data)
 
                 # Update metadata using service
                 metadata[game_key]["results_fetched"] = True

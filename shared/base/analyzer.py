@@ -103,12 +103,21 @@ class BaseAnalyzer(ABC):
             Prediction data dictionary
         """
         game_date = game_meta.get("game_date")
-        filename = self._extract_filename_from_key(game_key, game_date)
 
-        data = self.prediction_repo.load_prediction(game_date, filename)
+        # Extract team abbreviations from game_key
+        # game_key format: "{date}_{home_abbr}_{away_abbr}" (e.g., "2025-11-02_cin_chi")
+        parts = game_key.split("_")
+        if parts[0] == game_date:
+            team_a_abbr = parts[1] if len(parts) > 1 else "unknown"  # home
+            team_b_abbr = parts[2] if len(parts) > 2 else "unknown"  # away
+        else:
+            # Fallback: try to extract from metadata or raise error
+            raise Exception(f"Unable to parse team abbreviations from game_key: {game_key}")
+
+        data = self.prediction_repo.load_prediction(game_date, team_a_abbr, team_b_abbr)
 
         if data is None:
-            raise Exception(f"Prediction file not found: {game_date}/{filename}.json")
+            raise Exception(f"Prediction file not found: {game_date}/{team_a_abbr}_{team_b_abbr}.json")
 
         return data
 
@@ -123,12 +132,22 @@ class BaseAnalyzer(ABC):
             Result data dictionary
         """
         game_date = game_meta.get("game_date")
-        filename = self._extract_filename_from_key(game_key, game_date)
 
-        data = self.results_repo.load_result(game_date, filename)
+        # Extract team abbreviations from game_key
+        # game_key format: "{date}_{home_abbr}_{away_abbr}" (e.g., "2025-11-02_cin_chi")
+        parts = game_key.split("_")
+        if parts[0] == game_date:
+            home_abbr = parts[1] if len(parts) > 1 else "unknown"
+            away_abbr = parts[2] if len(parts) > 2 else "unknown"
+        else:
+            # Fallback: try to extract from metadata or raise error
+            raise Exception(f"Unable to parse team abbreviations from game_key: {game_key}")
+
+        # Results format: {away_abbr}_at_{home_abbr}.json
+        data = self.results_repo.load_result(game_date, away_abbr, home_abbr)
 
         if data is None:
-            raise Exception(f"Result file not found: {game_date}/{filename}.json")
+            raise Exception(f"Result file not found: {game_date}/{away_abbr}_at_{home_abbr}.json")
 
         return data
 
@@ -365,12 +384,21 @@ class BaseAnalyzer(ABC):
             analysis_data: Analysis dictionary to save
         """
         game_date = game_meta.get("game_date")
-        filename = self._extract_filename_from_key(game_key, game_date)
+
+        # Extract team abbreviations from game_key
+        # game_key format: "{date}_{home_abbr}_{away_abbr}" (e.g., "2025-11-02_cin_chi")
+        parts = game_key.split("_")
+        if parts[0] == game_date:
+            team_a_abbr = parts[1] if len(parts) > 1 else "unknown"  # home
+            team_b_abbr = parts[2] if len(parts) > 2 else "unknown"  # away
+        else:
+            # Fallback: try to extract from metadata or raise error
+            raise Exception(f"Unable to parse team abbreviations from game_key: {game_key}")
 
         # Save using repository
-        self.analysis_repo.save_analysis(game_date, filename, analysis_data)
+        self.analysis_repo.save_analysis(game_date, team_a_abbr, team_b_abbr, analysis_data)
 
-        print(f"    [dim]Analysis saved to {self.config.sport_name}/data/analysis/{game_date}/{filename}.json[/dim]")
+        print(f"    [dim]Analysis saved to {self.config.sport_name}/data/analysis/{game_date}/{team_a_abbr}_{team_b_abbr}.json[/dim]")
 
     def _get_analysis_path(self, game_key: str, game_meta: dict) -> str:
         """Build path to analysis JSON file.
