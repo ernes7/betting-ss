@@ -6,7 +6,7 @@ predictions, and analyses to prevent duplicate work and track processing status.
 
 import json
 import os
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Dict, Any, Optional
 from shared.config import ensure_parent_directory
 
@@ -125,7 +125,7 @@ class PredictionsMetadataService(MetadataService):
     """Specialized service for predictions metadata with enhanced tracking."""
 
     def load_predictions_metadata(self) -> Dict[str, Any]:
-        """Load predictions metadata with automatic migration from old format.
+        """Load predictions metadata with automatic migration and archival.
 
         Returns:
             Dictionary containing predictions metadata
@@ -155,6 +155,12 @@ class PredictionsMetadataService(MetadataService):
         # Save migrated version
         if migrated:
             self.save_metadata(metadata)
+
+        # Auto-archive old completed entries (lazy archival)
+        archived_count = self.archive_old_entries()
+        if archived_count > 0:
+            # Reload metadata after archival
+            metadata = self.load_metadata()
 
         return metadata
 
@@ -243,3 +249,76 @@ class PredictionsMetadataService(MetadataService):
         if game_key in metadata and isinstance(metadata[game_key], dict):
             metadata[game_key]["results_fetched"] = True
             self.save_metadata(metadata)
+
+    def archive_old_entries(self, days_threshold: int = 7) -> int:
+        """Archive old completed game entries to keep active metadata small.
+
+        Archives games where:
+        - results_fetched = true
+        - analysis_generated = true
+        - game_date is older than days_threshold
+
+        Args:
+            days_threshold: Number of days after which to archive (default: 7)
+
+        Returns:
+            Number of entries archived
+        """
+        # Get archive file path
+        archive_path = self.metadata_file_path.replace(".metadata.json", ".metadata.archive.json")
+
+        # Load current metadata
+        metadata = self.load_metadata()
+        if not metadata:
+            return 0
+
+        # Load existing archive
+        archive = {}
+        if os.path.exists(archive_path):
+            try:
+                with open(archive_path) as f:
+                    archive = json.load(f)
+            except Exception as e:
+                print(f"Warning: Could not load archive file: {str(e)}")
+
+        # Calculate cutoff date
+        cutoff_date = (datetime.now() - timedelta(days=days_threshold)).date()
+
+        # Find entries to archive
+        entries_to_archive = []
+        for game_key, game_data in metadata.items():
+            if not isinstance(game_data, dict):
+                continue
+
+            # Check if entry is ready to archive
+            results_fetched = game_data.get("results_fetched", False)
+            analysis_generated = game_data.get("analysis_generated", False)
+            game_date_str = game_data.get("game_date")
+
+            if not (results_fetched and analysis_generated and game_date_str):
+                continue
+
+            # Parse game date
+            try:
+                game_date = datetime.strptime(game_date_str, "%Y-%m-%d").date()
+                if game_date < cutoff_date:
+                    entries_to_archive.append(game_key)
+            except (ValueError, TypeError):
+                continue
+
+        # Move entries to archive
+        for game_key in entries_to_archive:
+            archive[game_key] = metadata[game_key]
+            del metadata[game_key]
+
+        # Save both files if any entries were archived
+        if entries_to_archive:
+            self.save_metadata(metadata)
+            ensure_parent_directory(archive_path)
+            try:
+                with open(archive_path, "w") as f:
+                    json.dump(archive, f, indent=2)
+            except Exception as e:
+                print(f"Warning: Could not save archive file: {str(e)}")
+
+        return len(entries_to_archive)
