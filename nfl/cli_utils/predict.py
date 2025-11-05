@@ -1,11 +1,12 @@
-"""Prediction CLI commands - Refactored with services."""
+"""NFL prediction CLI commands - EV+ betting analysis with services."""
 
 import os
 import re
 import inquirer
 from datetime import date, datetime
+from pathlib import Path
 
-# Import shared services
+# Import shared services and utilities
 from shared.services import (
     create_team_service_for_sport,
     MetadataService,
@@ -13,71 +14,131 @@ from shared.services import (
     ProfileService,
     OddsService
 )
-from shared.repositories import PredictionRepository
+from shared.repositories import PredictionRepository, OddsRepository
 from shared.utils.console_utils import (
     print_header,
     print_success,
     print_error,
     print_info,
+    print_warning,
     print_cost_info,
     print_cancelled,
-    print_markdown,
-    create_spinner_progress,
     console
 )
 from shared.utils.validation_utils import is_valid_inquirer_date
 from shared.config import get_metadata_path, get_file_path
 
-# Import sport factory
+# Import sport factory and scrapers
 from shared.factory import SportFactory
 import shared.register_sports
+from nfl.odds_scraper import NFLOddsScraper
+from shared.utils.web_scraper import WebScraper
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 # Initialize services
 nfl_sport = SportFactory.create("nfl")
 team_service = create_team_service_for_sport("nfl")
-profile_metadata_service = MetadataService(get_metadata_path("nfl", "profiles"))
 predictions_metadata_service = PredictionsMetadataService(get_metadata_path("nfl", "predictions"))
+profile_metadata_service = MetadataService(get_metadata_path("nfl", "profiles"))
 profile_service = ProfileService("nfl", nfl_sport.scraper, profile_metadata_service)
 odds_service = OddsService("nfl")
 prediction_repo = PredictionRepository("nfl")
+odds_repo = OddsRepository("nfl")
 
 
-def parse_prediction_text(prediction_text: str) -> list[dict]:
-    """Parse prediction text to extract structured parlay data.
+def fetch_and_save_odds_from_url(
+    url: str,
+    game_date: str,
+    team_a_abbr: str,
+    team_b_abbr: str,
+    home_abbr: str
+) -> dict | None:
+    """Fetch DraftKings HTML from URL and extract odds.
 
     Args:
-        prediction_text: Raw prediction text from Claude API
+        url: DraftKings game URL
+        game_date: Game date in YYYY-MM-DD format
+        team_a_abbr: First team abbreviation
+        team_b_abbr: Second team abbreviation
+        home_abbr: Home team abbreviation
 
     Returns:
-        List of parlay dictionaries with name, confidence, bets, reasoning
+        Odds dictionary if successful, None otherwise
     """
-    parlays = []
-    # Updated pattern to handle confidence like "97%+" (with optional +)
-    parlay_pattern = r'## (Parlay \d+: .+?)\n\*\*Confidence\*\*: (\d+)%\+?\n\n\*\*Bets:\*\*\n(.+?)\n\n\*\*Reasoning\*\*: (.+?)(?=\n##|\Z)'
+    try:
+        print_info("🌐 Fetching DraftKings page...")
 
-    for match in re.finditer(parlay_pattern, prediction_text, re.DOTALL):
-        parlay_name = match.group(1).strip()
-        confidence = int(match.group(2))
-        bets_text = match.group(3).strip()
-        reasoning = match.group(4).strip()
+        # Fetch HTML using Playwright
+        scraper = WebScraper(headless=True, timeout=30000)
+        with scraper.launch() as page:
+            scraper.navigate_and_wait(page, url, wait_time=3000)
+            html_content = page.content()
 
-        # Parse bets list (numbered items)
-        bets = []
-        for bet_match in re.finditer(r'^\d+\.\s+(.+?)$', bets_text, re.MULTILINE):
-            bets.append(bet_match.group(1).strip())
+        print_success("Page fetched successfully")
 
-        parlays.append({
-            "name": parlay_name,
-            "confidence": confidence,
-            "bets": bets,
-            "reasoning": reasoning,
-            "odds": None  # To be filled in later
+        # Save HTML to temp file for odds scraper
+        temp_html_path = Path("nfl/data/odds") / "temp_dk_page.html"
+        temp_html_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_html_path.write_text(html_content, encoding='utf-8')
+
+        # Extract odds using existing scraper
+        print_info("📊 Extracting odds from page...")
+        odds_scraper = NFLOddsScraper()
+        odds_data = odds_scraper.extract_odds(str(temp_html_path))
+
+        # Clean up temp file
+        temp_html_path.unlink()
+
+        # Save odds using repository
+        # Determine away/home order
+        away_abbr = team_a_abbr if team_a_abbr != home_abbr else team_b_abbr
+        odds_repo.save_odds(game_date, away_abbr, home_abbr, odds_data)
+
+        print_success(f"Odds saved successfully")
+
+        return odds_data
+
+    except Exception as e:
+        print_error(f"Error fetching odds from URL: {str(e)}")
+        print_warning("Please check the URL and try again, or use the fetch-odds command with a saved HTML file.")
+        return None
+
+
+def parse_ev_singles_text(prediction_text: str) -> list[dict]:
+    """Parse EV singles prediction text to extract structured bet data.
+
+    Returns:
+        List of 5 bet dictionaries with EV analysis
+    """
+    bets = []
+
+    # Pattern to match EV singles output format (updated to match "Calculation" field)
+    bet_pattern = r'## Bet (\d+):.+?\n\*\*Bet\*\*: (.+?)\n\*\*Odds\*\*: ([+-]?\d+)\n\*\*Implied Probability\*\*: ([\d.]+)%[^\n]*\n\*\*True Probability\*\*: ([\d.]+)%[^\n]*\n\*\*Expected Value\*\*: \+?([\d.]+)%[^\n]*\n\*\*Kelly Criterion\*\*: ([\d.]+)%[^:]+half: ([\d.]+)%[^\n]*\n\n\*\*Calculation\*\*:\n(.+?)(?=\n##|\Z)'
+
+    for match in re.finditer(bet_pattern, prediction_text, re.DOTALL):
+        bets.append({
+            "rank": int(match.group(1)),
+            "bet": match.group(2).strip(),
+            "odds": int(match.group(3)),
+            "implied_probability": float(match.group(4)),
+            "true_probability": float(match.group(5)),
+            "expected_value": float(match.group(6)),
+            "kelly_full": float(match.group(7)),
+            "kelly_half": float(match.group(8)),
+            "reasoning": match.group(9).strip()
         })
 
-    return parlays
+    # Validation: warn if less than 5 bets were parsed
+    if len(bets) < 5:
+        print(f"[yellow]⚠ Warning: Only parsed {len(bets)} bets out of expected 5[/yellow]")
+        print("[yellow]  This may indicate a truncated or malformed response[/yellow]")
+
+    return bets
 
 
-def save_prediction_to_markdown(
+def save_ev_prediction_to_files(
     game_date: str,
     team_a: str,
     team_b: str,
@@ -85,29 +146,17 @@ def save_prediction_to_markdown(
     team_a_abbr: str,
     team_b_abbr: str,
     prediction_text: str,
-    cost: float = 0.0,
-    model: str = "unknown",
-    tokens: dict = None,
+    cost: float,
+    model: str,
+    tokens: dict
 ):
-    """Save prediction to markdown and JSON files using repository.
-
-    Args:
-        game_date: Game date/week identifier
-        team_a: First team name
-        team_b: Second team name
-        home_team: Home team name
-        team_a_abbr: Team A abbreviation
-        team_b_abbr: Team B abbreviation
-        prediction_text: Raw prediction text from API
-        cost: API cost in USD
-        model: Model name used
-        tokens: Token usage dict with input, output, total keys
-    """
+    """Save EV prediction to markdown and JSON files using repository."""
     # Build markdown content
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    markdown = f"""# {team_a} vs {team_b} - {game_date}
+    markdown = f"""# {team_a} vs {team_b} - EV+ Singles - {game_date}
 
 **Home Team**: {home_team}
+**Prediction Type**: EV+ Singles (Expected Value Analysis)
 **Generated**: {timestamp}
 **Model**: {model}
 **API Cost**: ${cost:.4f}
@@ -118,21 +167,33 @@ def save_prediction_to_markdown(
 
 ---
 
-## ACTUAL ODDS
-
-**PARLAY 1 ODDS:**
-
-**PARLAY 2 ODDS:**
-
-**PARLAY 3 ODDS:**
+## NOTES
+- **EV%**: Expected Value percentage (edge over implied probability)
+- **Kelly Criterion**: Optimal bet sizing as % of bankroll
+- **Half Kelly**: Recommended conservative stake (safer than full Kelly)
+- **Minimum EV**: All bets have +3% or higher expected value
 """
 
-    # Parse prediction text to extract structured data
-    parlays = parse_prediction_text(prediction_text)
+    # Parse prediction to extract structured data
+    bets = parse_ev_singles_text(prediction_text)
+
+    # Calculate summary stats
+    if bets:
+        ev_values = [bet["expected_value"] for bet in bets]
+        kelly_halfs = [bet["kelly_half"] for bet in bets]
+        summary = {
+            "total_bets": len(bets),
+            "avg_ev": round(sum(ev_values) / len(ev_values), 2),
+            "ev_range": [round(min(ev_values), 2), round(max(ev_values), 2)],
+            "avg_kelly_half": round(sum(kelly_halfs) / len(kelly_halfs), 2)
+        }
+    else:
+        summary = {"total_bets": 0, "avg_ev": 0, "ev_range": [0, 0], "avg_kelly_half": 0}
 
     # Build JSON structure
     prediction_data = {
         "sport": "nfl",
+        "prediction_type": "ev_singles",
         "teams": [team_a, team_b],
         "home_team": home_team,
         "date": game_date,
@@ -140,7 +201,8 @@ def save_prediction_to_markdown(
         "model": model,
         "api_cost": cost,
         "tokens": tokens,
-        "parlays": parlays
+        "bets": bets,
+        "summary": summary
     }
 
     # Determine correct order (home team first)
@@ -155,18 +217,22 @@ def save_prediction_to_markdown(
 
 
 def predict_game():
-    """Generate parlays for a game matchup."""
-    print_header("🎲 NFL GAME PARLAY GENERATOR 🎲")
+    """Generate 5 EV+ individual bets ranked by expected value."""
 
-    # Ask for game date (default to today)
+    print_header("📊 NFL PREDICTION GENERATOR 📊")
+    console.print()
+    console.print("[dim]Analyzes betting odds vs stats to find +EV opportunities[/dim]")
+    console.print("[dim]Includes Kelly Criterion stake sizing recommendations[/dim]")
+
+    # Ask for game date
     today = date.today().isoformat()
     date_questions = [
         inquirer.Text(
             "game_date",
             message=f"Enter game date (YYYY-MM-DD) [default: {today}]",
             default=today,
-            validate=is_valid_inquirer_date,
-        ),
+            validate=is_valid_inquirer_date
+        )
     ]
     date_answers = inquirer.prompt(date_questions)
     if not date_answers:
@@ -189,11 +255,7 @@ def predict_game():
 
     # Home team selection
     home_questions = [
-        inquirer.List(
-            "home",
-            message="Select home team",
-            choices=[team_a, team_b],
-        ),
+        inquirer.List("home", message="Select home team", choices=[team_a, team_b])
     ]
     home_answers = inquirer.prompt(home_questions)
     if not home_answers:
@@ -210,12 +272,11 @@ def predict_game():
 
     # Display matchup
     console.print()
-    from rich.panel import Panel
     matchup_text = f"[bold white]{team_a}[/bold white] @ [bold white]{team_b}[/bold white] - {game_date}\n"
     matchup_text += f"[dim]HOME: {home_team}[/dim]"
     console.print(Panel(matchup_text, title="[bold green]⚡ MATCHUP ⚡[/bold green]", border_style="green"))
 
-    # Check if this game was already predicted today using metadata service
+    # Check if already predicted today using metadata service
     was_predicted, game_key = predictions_metadata_service.was_game_predicted_today(
         game_date, team_a_abbr, team_b_abbr, home_abbr
     )
@@ -225,23 +286,60 @@ def predict_game():
         filepath = get_file_path("nfl", "predictions", "prediction", game_date=game_date, team_a_abbr=home_abbr, team_b_abbr=away_abbr)
         if os.path.exists(filepath):
             console.print()
-            print_info("📋 This game was already predicted today. Loading existing prediction...")
+            print_info("📋 EV+ Singles already generated for this game today.")
             console.print()
 
             try:
                 with open(filepath, encoding="utf-8") as f:
                     content = f.read()
-                    # Extract just the prediction part (skip header)
                     prediction_content = content.split("---\n", 1)[1] if "---\n" in content else content
 
-                from rich.markdown import Markdown
-                console.print(Panel(Markdown(prediction_content), title="[bold green]🎯 PARLAYS 🎯[/bold green]", border_style="green", padding=(1, 2)))
+                console.print(Panel(Markdown(prediction_content),
+                                   title="[bold green]📊 TOP 5 EV+ BETS 📊[/bold green]",
+                                   border_style="green", padding=(1, 2)))
                 console.print(f"\n[green]✓[/green] [dim]Using prediction from {filepath}[/dim]")
                 return
             except Exception as e:
-                print_error(f"Could not load existing prediction: {str(e)}")
+                print_warning(f"Could not load existing: {str(e)}")
                 print_info("Generating new prediction...")
                 console.print()
+
+    # Check if odds already exist using odds service
+    existing_odds = odds_service.load_odds_for_game(game_date, team_a_abbr, team_b_abbr, home_abbr)
+
+    if not existing_odds:
+        # Prompt for DraftKings URL
+        console.print()
+        print_info("📊 Betting odds required for EV analysis")
+        console.print("[dim]Please provide the DraftKings game URL to fetch odds[/dim]\n")
+
+        url_questions = [
+            inquirer.Text(
+                "dk_url",
+                message="Enter DraftKings URL (or press Enter to skip)",
+                validate=lambda _, x: len(x.strip()) == 0 or "draftkings.com" in x.lower(),
+            )
+        ]
+        url_answers = inquirer.prompt(url_questions)
+
+        if not url_answers:
+            print_cancelled()
+            return
+
+        dk_url = url_answers["dk_url"].strip()
+
+        if dk_url:
+            # Fetch and save odds from URL
+            odds_data = fetch_and_save_odds_from_url(dk_url, game_date, team_a_abbr, team_b_abbr, home_abbr)
+            if not odds_data:
+                print_error("Failed to fetch odds. Cannot generate EV predictions without odds.")
+                return
+        else:
+            print_warning("No URL provided. Cannot generate EV predictions without odds.")
+            return
+    else:
+        console.print()
+        print_success("Using existing odds file")
 
     # Auto-fetch rankings if needed
     if not nfl_sport.scraper.rankings_metadata_mgr.was_scraped_today():
@@ -249,24 +347,24 @@ def predict_game():
         print_info("📊 Fetching fresh rankings data...")
         nfl_sport.scraper.extract_rankings()
 
-    # Load ranking data with spinner
-    with create_spinner_progress():
-        print_info("Loading ranking data...")
+    # Load rankings
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+        progress.add_task(description="Loading ranking data...", total=None)
         rankings = nfl_sport.predictor.load_ranking_tables()
 
     if not rankings:
-        print_error("Could not load ranking data. Please check your internet connection.")
+        print_error("Could not load ranking data.")
         return
 
-    # Load team profiles using profile service
+    # Load team profiles
     console.print()
-    with create_spinner_progress():
-        print_info("Loading team profile data...")
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+        progress.add_task(description="Loading team profile data...", total=None)
         profiles = profile_service.load_team_profiles(team_a, team_b)
         profile_a = profiles.get(team_a)
         profile_b = profiles.get(team_b)
 
-    # Validate that we have profile data - profiles are REQUIRED
+    # Validate profiles
     if not profile_a or not profile_b:
         console.print()
         error_text = "[bold red]ERROR: Failed to load team profile data[/bold red]\n\n"
@@ -274,85 +372,76 @@ def predict_game():
             error_text += f"[red]✗[/red] No profile data for {team_a}\n"
         if not profile_b:
             error_text += f"[red]✗[/red] No profile data for {team_b}\n"
-        error_text += "\n[yellow]Possible causes:[/yellow]\n"
-        error_text += "• Rate limiting from Pro-Football-Reference (wait 5 minutes)\n"
-        error_text += "• Network connectivity issues\n"
-        error_text += "• Invalid team abbreviation\n\n"
-        error_text += "[dim]Profile data is required for predictions.[/dim]"
         console.print(Panel(error_text, border_style="red", padding=(1, 2)))
         return
 
-    # Load betting odds (REQUIRED) using odds service
+    # Load odds (REQUIRED for EV analysis) using odds service
     console.print()
-    print_info("📊 Loading betting odds (required)...")
+    print_info("📊 Loading betting odds (required for EV analysis)...")
     odds_data = odds_service.load_odds_for_game(game_date, team_a_abbr, team_b_abbr, home_abbr)
 
     if not odds_data:
         console.print()
-        error_text = "[bold red]ERROR: Betting odds are required[/bold red]\n\n"
-        error_text += "[yellow]Predictions now require odds for accurate analysis.[/yellow]\n\n"
-        error_text += "Please fetch odds first:\n"
-        error_text += "1. Save DraftKings HTML from game page to your desktop\n"
-        error_text += f"2. Run: [cyan]python main.py → NFL → Fetch Odds[/cyan]\n"
-        error_text += f"3. Select the HTML file\n\n"
-        error_text += f"[dim]Expected file: nfl/data/odds/{game_date}/{home_abbr}_{away_abbr}.json[/dim]"
+        error_text = "[bold red]ERROR: Odds required for EV+ analysis[/bold red]\n\n"
+        error_text += "[yellow]EV+ mode calculates expected value by comparing odds to stats.[/yellow]\n"
+        error_text += "Odds data is required but could not be loaded.\n\n"
+        error_text += "Please provide a valid DraftKings game URL when prompted, or\n"
+        error_text += f"fetch odds first: [cyan]python main.py → NFL → Fetch Odds[/cyan]"
         console.print(Panel(error_text, border_style="red", padding=(1, 2)))
         return
 
     print_success("Loaded betting odds from DraftKings")
-    # Display summary of available odds
     game_lines_count = len(odds_data.get("game_lines", {}))
     player_props_count = len(odds_data.get("player_props", []))
     console.print(f"[dim]  • Game lines: {game_lines_count}[/dim]")
     console.print(f"[dim]  • Player props: {player_props_count} players[/dim]")
 
-    # Generate parlays with spinner
+    # Generate predictions
     console.print()
-    with create_spinner_progress():
-        console.print("Generating AI parlays with 80%+ confidence...")
-        result = nfl_sport.predictor.generate_parlays(team_a, team_b, home_team, rankings, profile_a, profile_b, odds_data)
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+        progress.add_task(description="Analyzing EV+ opportunities with Kelly Criterion...", total=None)
+        result = nfl_sport.predictor.generate_predictions(
+            team_a, team_b, home_team,
+            rankings, profile_a, profile_b,
+            odds_data
+        )
 
-    # Check if API call was successful
+    # Check if API call succeeded
     if not result.get("success", False):
         console.print()
         error_msg = result.get("error", "Unknown error")
         console.print(Panel(
-            f"[bold red]API Call Failed[/bold red]\n\n{error_msg}\n\n"
-            "[yellow]Possible causes:[/yellow]\n"
-            "• Rate limiting (30k tokens/minute exceeded)\n"
-            "• Network connectivity issues\n"
-            "• API service unavailable\n\n"
-            "[dim]No files were saved. Metadata was not updated.[/dim]",
+            f"[bold red]API Call Failed[/bold red]\n\n{error_msg}",
             border_style="red",
             padding=(1, 2)
         ))
         return
 
-    # Extract prediction details from result dictionary
+    # Extract result
     prediction_text = result["prediction"]
     cost = result["cost"]
     model = result["model"]
     tokens = result["tokens"]
 
-    # Display result with markdown rendering
+    # Display result
     console.print()
-    from rich.markdown import Markdown
-    console.print(Panel(Markdown(prediction_text), title="[bold green]🎯 PARLAYS 🎯[/bold green]", border_style="green", padding=(1, 2)))
+    console.print(Panel(Markdown(prediction_text),
+                       title="[bold green]📊 TOP 5 EV+ BETS 📊[/bold green]",
+                       border_style="green", padding=(1, 2)))
 
     # Display cost information using console utils
     print_cost_info(cost, tokens['input'], tokens['output'], tokens['total'])
     console.print(f"[dim]Model: {model}[/dim]")
 
-    # Wrap file save and metadata update in try-catch
+    # Save files and metadata
     try:
-        # Save to markdown and JSON using repository
-        save_prediction_to_markdown(
+        save_ev_prediction_to_files(
             game_date, team_a, team_b, home_team,
             team_a_abbr, team_b_abbr,
             prediction_text, cost, model, tokens
         )
 
-        # Update predictions metadata using service
+        # Update metadata using service
         predictions_metadata_service.mark_game_predicted(
             game_key,
             game_date,
@@ -370,8 +459,7 @@ def predict_game():
     except Exception as e:
         console.print()
         console.print(Panel(
-            f"[bold red]Failed to Save Prediction[/bold red]\n\n{str(e)}\n\n"
-            "[dim]Files may not have been saved. Metadata was not updated.[/dim]",
+            f"[bold red]Failed to Save Prediction[/bold red]\n\n{str(e)}",
             border_style="red",
             padding=(1, 2)
         ))

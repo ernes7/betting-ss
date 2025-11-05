@@ -1,7 +1,7 @@
 # Odds Integration - Implementation Summary
 
 ## Overview
-Successfully integrated DraftKings betting odds into the NFL prediction pipeline. Odds are now automatically loaded during prediction generation and passed to Claude AI for more informed betting recommendations.
+Successfully integrated DraftKings betting odds into the NFL EV+ prediction pipeline. Odds are **required** for EV analysis and are automatically fetched during prediction generation. The system uses odds to calculate implied probabilities, compare against Claude AI's true probability estimates, and identify positive expected value (EV+) opportunities with Kelly Criterion stake sizing.
 
 ## Architecture Changes
 
@@ -98,11 +98,11 @@ else:
     console.print(Panel(error_text, border_style="red", padding=(1, 2)))
     return
 
-# Pass odds to predictor
-result = nfl_sport.predictor.generate_parlays(
+# Pass odds to predictor (REQUIRED for EV analysis)
+result = nfl_sport.predictor.generate_predictions(
     team_a, team_b, home_team,
     rankings, profile_a, profile_b,
-    odds_data  # <- Odds passed to AI for informed predictions
+    odds_data  # <- Odds REQUIRED for EV+ analysis and Kelly Criterion
 )
 ```
 
@@ -113,10 +113,10 @@ result = nfl_sport.predictor.generate_parlays(
 - Same interface across NFL and NBA
 
 ### 5. Predictor Enhancement (shared/base/predictor.py)
-Updated to accept and forward odds:
+Updated to require odds for EV analysis:
 
 ```python
-def generate_parlays(
+def generate_predictions(
     self,
     team_a: str,
     team_b: str,
@@ -124,9 +124,16 @@ def generate_parlays(
     rankings: dict | None = None,
     profile_a: dict | None = None,
     profile_b: dict | None = None,
-    odds: dict | None = None,  # <- NEW parameter
+    odds: dict = None,  # <- REQUIRED for EV+ analysis
 ) -> dict:
-    # Pass odds to prompt builder
+    # Odds are required for EV analysis
+    if odds is None:
+        return {
+            "success": False,
+            "error": "Odds data is required for EV+ analysis"
+        }
+
+    # Pass odds to prompt builder for EV calculation
     prompt = self.prompt_builder.build_prompt(
         ...,
         odds=odds
@@ -134,21 +141,24 @@ def generate_parlays(
 ```
 
 ### 6. Prompt Builder (shared/base/prompt_builder.py)
-Enhanced to include odds in AI context:
+Enhanced to include odds and EV calculation methodology:
 
 ```python
 def build_prompt(
     ...,
-    odds: dict | None = None,
+    odds: dict = None,
 ) -> str:
     # Add odds to data context
     if odds:
         data_context += f"\n\nCURRENT BETTING ODDS (DraftKings):\n{json.dumps(odds, indent=2)}"
 
-    # Add instructions for using odds
-    # - If betting odds are provided, use them to inform your selections
-    # - When odds include player prop lines/milestones, prioritize those players
-    # - Compare odds to actual stats to identify value opportunities
+    # EV-focused prompt includes:
+    # - Convert odds to implied probability formulas
+    # - Estimate true probability from stats (conservative approach)
+    # - Calculate expected value: (True Prob × Decimal Odds) - 1
+    # - Kelly Criterion stake sizing formulas (full and half)
+    # - Minimum EV threshold (+3% edge required)
+    # - Return top 5 bets ranked by EV
 ```
 
 ### 7. Clean Architecture Integration
@@ -248,8 +258,13 @@ python main.py
 #   • Game lines: 3
 #   • Player props: 25 players
 #
-# Generating AI parlays with 80%+ confidence...
-# [Claude generates parlays using stats + odds]
+# Analyzing EV+ opportunities with Kelly Criterion...
+# [Claude generates top 5 EV+ bets using stats + odds]
+#
+# TOP 5 EV+ BETS:
+# 1. Patrick Mahomes Over 250.5 Passing Yards (+150, 8.5% EV, 14.7% Kelly half)
+# 2. Travis Kelce Over 75.5 Receiving Yards (+120, 6.2% EV, 11.3% Kelly half)
+# ...
 ```
 
 ### Flow Diagram
@@ -275,16 +290,22 @@ User Input
 └─────────────────────────────────────┘
     ↓
 ┌─────────────────────────────────────┐
-│ 4. Generate Predictions             │
+│ 4. Generate EV+ Predictions         │
 │    Claude AI receives:              │
 │    ├─ Rankings (league-wide stats)  │
 │    ├─ Profiles (team-specific)      │
-│    └─ Odds (DraftKings lines)       │
+│    ├─ Odds (DraftKings lines)       │
+│    └─ EV calculation formulas       │
+│    Returns:                         │
+│    ├─ Top 5 bets ranked by EV%      │
+│    ├─ Implied vs true probabilities │
+│    └─ Kelly Criterion stakes        │
 └─────────────────────────────────────┘
     ↓
 ┌─────────────────────────────────────┐
 │ 5. Save Predictions                 │
 │    nfl/data/predictions/{date}/{home}_{away}.json
+│    Contains: 5 EV+ bets with Kelly  │
 │    Metadata tracks odds_used: true  │
 └─────────────────────────────────────┘
 ```
@@ -349,30 +370,33 @@ User Input
 
 ## Key Benefits
 
-### 1. Enhanced Prediction Quality
-- **Before**: Claude analyzes rankings + profiles only
-- **After**: Claude sees actual betting lines and player prop milestones
-- **Result**: More realistic bets aligned with market expectations
+### 1. Positive Expected Value (EV+) Identification
+- **Before**: Parlays based on confidence estimates only
+- **After**: Mathematical EV analysis with implied vs true probabilities
+- **Result**: Only bet when edge > +3% expected value
 
-### 2. Value Identification
-- AI can spot discrepancies between stats and odds
-- Example: Player averaging 280 passing yards but 250+ line at +100
-- Better EV+ opportunity identification
+### 2. Kelly Criterion Stake Sizing
+- Calculate optimal bet sizes to maximize long-term growth
+- Half Kelly recommended for conservative bankroll management
+- Example: 8.5% EV bet → 14.7% of bankroll stake
+- Prevents over-betting and bankroll ruin
 
-### 3. Line Precision
-- No more guessing at "conservative lines"
-- AI sees actual DraftKings milestones (200+, 225+, 250+, etc.)
-- Can pick specific lines with known odds
+### 3. Market Line Integration
+- Use actual DraftKings lines for precise EV calculations
+- No guessing at implied probabilities
+- AI estimates true probability from stats, compares to market
+- Example: +150 odds = 40% implied prob → AI estimates 58% true prob = 8.5% EV
 
-### 4. Automated Workflow
-- Odds automatically loaded if available
-- Graceful degradation if odds missing (stats-only mode)
-- Clear feedback to user about odds status
+### 4. Profit/Loss Tracking
+- After games, calculate actual P&L for each bet
+- Win: $100 × (odds/100), Loss: -$100
+- Track ROI, win rate, realized edge
+- Verify prediction accuracy and refine models
 
 ### 5. Data Consistency
-- Unified file naming across predictions and odds
-- Metadata tracks complete lifecycle
-- Easy to match predictions with odds for analysis
+- Unified file naming across predictions, odds, and analysis
+- Metadata tracks complete lifecycle (prediction → odds → results → P&L)
+- Easy to backtest and improve strategies
 
 ## File Organization
 
@@ -426,10 +450,11 @@ Old predictions metadata automatically upgraded:
 }
 ```
 
-### Graceful Degradation
-- If odds file missing: prediction works with stats only
-- If odds malformed: warning shown, prediction continues
-- No breaking changes to existing functionality
+### Odds Requirement for EV Analysis
+- Odds are **REQUIRED** for EV+ predictions
+- If odds missing: prediction fails with clear error message
+- User must provide DraftKings URL to fetch odds
+- Cannot calculate expected value without market odds
 
 ## Testing Checklist
 
