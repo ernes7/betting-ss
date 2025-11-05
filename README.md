@@ -1,34 +1,44 @@
 # Sports Betting Analysis Tool
 
-AI-powered betting analysis system for multi-sport support. Combines web scraping with Claude AI to generate data-driven parlays.
+AI-powered betting analysis system with Expected Value (EV+) analysis and Kelly Criterion stake sizing. Combines web scraping, odds integration, and Claude AI to identify profitable betting opportunities.
 
 ## Features
 
-- **Extensible OOP Architecture**: Plug-and-play system for adding new sports (~150 lines of config)
-- **Automated Data Extraction**: Scrapes rankings, team profiles, and injury reports from sports-reference sites
-- **AI Analysis**: Claude Sonnet 4.5 generates 3-parlay predictions (80-95% confidence thresholds)
+- **EV+ Analysis**: Identifies positive expected value bets by comparing true probability vs implied odds
+- **Kelly Criterion**: Calculates optimal bet sizing to maximize long-term growth
+- **Automated Data Extraction**: Scrapes rankings, team profiles, injury reports, and betting odds
+- **AI Analysis**: Claude Sonnet 4.5 generates top 5 EV+ bets ranked by expected value
+- **Profit/Loss Tracking**: Analyzes actual game results to calculate P&L and ROI
 - **Smart Caching**: Metadata tracking avoids redundant scraping (once per day limit)
-- **Rich CLI**: Interactive team selection with markdown-rendered predictions
+- **Rich CLI**: Interactive menu with markdown-rendered predictions and analysis
 
 ## Supported Sports
 
-- **NFL** (32 teams) - Pro-Football-Reference.com
-- **NBA** (30 teams) - Basketball-Reference.com
+- **NFL** (32 teams) - Pro-Football-Reference.com + DraftKings odds
+- **NBA** (30 teams) - Coming soon for EV+ betting
 
 ## Architecture
 
 ```
-shared/              # Base classes & utilities (Scraper, Predictor, PromptBuilder)
-├── base/            # Abstract sport interfaces
-├── utils/           # Reusable components (metadata, web scraping, file I/O)
-└── factory.py       # Sport instantiation
+shared/              # Base classes & utilities
+├── base/            # Abstract sport interfaces (Predictor, Analyzer, PromptBuilder)
+├── repositories/    # Data access layer (predictions, results, analysis)
+├── services/        # Business logic (odds, profiles, metadata)
+└── utils/           # Reusable components (web scraping, file I/O, optimization)
 
 nfl/                 # NFL implementation
-├── nfl_config.py    # Sport configuration (~65 lines)
-├── prompt_components.py  # NFL-specific bet types (~85 lines)
-└── data/            # Scraped rankings & profiles
+├── nfl_config.py    # Sport configuration
+├── nfl_analyzer.py  # EV+ analysis with P&L calculation
+├── prompt_components.py  # NFL-specific bet types and Kelly Criterion
+├── cli_utils/       # CLI commands (predict, fetch_odds, fetch_results)
+└── data/
+    ├── predictions/ # EV+ predictions with Kelly stakes
+    ├── analysis/    # P&L analysis results
+    ├── odds/        # DraftKings betting odds
+    ├── rankings/    # Team rankings & stats
+    └── results/     # Game results & box scores
 
-nba/                 # NBA implementation (same pattern)
+nba/                 # NBA implementation (stubbed for future EV+ support)
 ```
 
 ## Setup
@@ -45,12 +55,27 @@ echo "ANTHROPIC_API_KEY=your_key_here" > .env
 poetry run python cli.py
 ```
 
-Select sport → week → teams → home team → get AI-generated parlays
+### Workflow
+1. **Select Sport** (NFL/NBA)
+2. **Predict Game**: Enter date, select teams, provide DraftKings URL for odds
+3. **Fetch Results**: Automatically analyze predictions and calculate P&L
+4. **Review Analysis**: View bet-by-bet results, ROI, and insights
+
+### EV+ Prediction Output
+- Top 5 individual bets ranked by expected value
+- Kelly Criterion full/half stakes for optimal bankroll management
+- Implied probability vs true probability for each bet
+- Game analysis explaining why these bets have edge
+
+### P&L Analysis Output
+- Win/loss status for each bet
+- Profit/loss per bet (uses $100 fixed stake)
+- Total ROI, win rate, and realized edge
+- Insights about prediction accuracy
 
 ## Adding New Sports (NHL/MLB)
 
 1. Create `{sport}/{sport}_config.py` implementing `SportConfig` interface
-2. Create `{sport}/prompt_components.py` with sport-specific bet types
-3. Register in `shared/register_sports.py`
-
-**Total: ~150 lines** (vs ~1200 lines without OOP architecture)
+2. Create `{sport}/prompt_components.py` with EV-focused bet types
+3. Create `{sport}/{sport}_analyzer.py` extending `BaseAnalyzer`
+4. Register in `shared/register_sports.py`

@@ -157,29 +157,34 @@ odds_data = odds_service.load_odds_for_game(date, team_a, team_b, home)
 └─────────────────────────────────────────────────────────────────────┘
                                   ↓
 ┌─────────────────────────────────────────────────────────────────────┐
-│ 3. GENERATE PREDICTION (Claude AI)                                  │
+│ 3. GENERATE PREDICTION (Claude AI with EV+ Analysis)                │
 ├─────────────────────────────────────────────────────────────────────┤
-│ User Input: Team A, Team B, Home Team, Game Date                    │
+│ User Input: Team A, Team B, Home Team, Game Date, DraftKings URL    │
 │ Loader: nfl/cli_utils/predict.py → load_team_profiles()            │
-│         + load_ranking_tables()                                     │
-│ Processor: shared/base/predictor.py → generate_parlays()            │
+│         + load_ranking_tables() + fetch_odds_from_url()            │
+│ Processor: shared/base/predictor.py → generate_predictions()        │
 │ Action:                                                             │
-│   1. Load rankings data (all 6 ranking tables)                      │
-│   2. Load both team profiles (all 8 profile tables each)            │
-│   3. Extract team stats from rankings using team name lookup        │
-│   4. Build prompt with:                                             │
+│   1. Fetch and save betting odds from DraftKings (REQUIRED)         │
+│   2. Load rankings data (all 6 ranking tables)                      │
+│   3. Load both team profiles (all 8 profile tables each)            │
+│   4. Extract team stats from rankings using team name lookup        │
+│   5. Build prompt with:                                             │
 │      - Sport-specific components (prompt_components.py)             │
 │      - Team stats from rankings                                     │
 │      - Team profile data                                            │
+│      - Betting odds (game lines + player props)                     │
+│      - EV calculation methodology                                   │
+│      - Kelly Criterion formulas                                     │
 │      - Game context (home/away, date)                               │
-│   5. Call Claude API (claude-sonnet-4-5-20250929)                   │
-│   6. Return prediction text, cost, tokens                           │
+│   6. Call Claude API (claude-sonnet-4-5-20250929)                   │
+│   7. Return top 5 EV+ bets ranked by expected value                 │
 │ Output: Prediction markdown + JSON files                            │
 │   - nfl/data/predictions/{game_date}/{home_abbr}_{away_abbr}.md    │
 │   - nfl/data/predictions/{game_date}/{home_abbr}_{away_abbr}.json  │
+│     [Contains 5 bets with EV%, Kelly stakes, probabilities]        │
 │ Metadata: nfl/data/predictions/.metadata.json                       │
 │   Key format: "{game_date}_{home_abbr}_{away_abbr}"                │
-│   Tracks: last_predicted, results_fetched, game_date, teams, etc   │
+│   Tracks: last_predicted, results_fetched, odds_used, game_date    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -210,13 +215,18 @@ predict_game()
   │    │  └─ Load all profile tables from directory
   │    └─ Validate both profiles loaded successfully
   │
-  ├─ 5. Generate parlays:
-  │    ├─ Call nfl_sport.predictor.generate_parlays()
-  │    └─ This invokes Claude API with all data
+  ├─ 5. Fetch and save betting odds:
+  │    ├─ fetch_and_save_odds_from_url() (if URL provided)
+  │    └─ Saves to nfl/data/odds/{date}/{away}_vs_{home}.json
   │
-  ├─ 6. Save results:
-  │    ├─ save_prediction_to_markdown() → .md file
-  │    ├─ save_prediction_to_markdown() → .json file (also)
+  ├─ 6. Generate EV+ predictions:
+  │    ├─ Call nfl_sport.predictor.generate_predictions()
+  │    ├─ Invokes Claude API with rankings + profiles + odds
+  │    └─ Returns top 5 EV+ bets with Kelly Criterion
+  │
+  ├─ 7. Save results:
+  │    ├─ save_ev_prediction_to_files() → .md file
+  │    ├─ save_ev_prediction_to_files() → .json file (also)
   │    └─ Update predictions metadata
   │
   └─ 7. Display to user with markdown rendering
@@ -389,10 +399,11 @@ Example:
 - **Home Team First**: Filename reflects home team as first abbreviation
 - **Metadata Tracking**: Game key in metadata matches: `2025-10-27_kc_was`
 
-### Predictions JSON Structure
+### Predictions JSON Structure (EV+ Format)
 ```json
 {
   "sport": "nfl",
+  "prediction_type": "ev_singles",
   "teams": ["Washington Commanders", "Kansas City Chiefs"],
   "home_team": "Kansas City Chiefs",
   "date": "2025-10-27",
@@ -404,20 +415,26 @@ Example:
     "output": 698,
     "total": 36879
   },
-  "parlays": [
+  "bets": [
     {
-      "name": "Parlay 1: Washington Commanders Wins",
-      "confidence": 92,
-      "bets": [
-        "Washington Commanders Moneyline",
-        "Marcus Mariota Over 185.5 passing yards",
-        ...
-      ],
-      "reasoning": "If Washington pulls the upset...",
-      "odds": null
+      "rank": 1,
+      "bet": "Patrick Mahomes Over 250.5 Passing Yards",
+      "odds": 150,
+      "implied_probability": 40.0,
+      "true_probability": 58.0,
+      "expected_value": 8.5,
+      "kelly_full": 29.3,
+      "kelly_half": 14.7,
+      "reasoning": "Mahomes averages 285 yards at home with favorable matchup..."
     },
     ...
-  ]
+  ],
+  "summary": {
+    "total_bets": 5,
+    "avg_ev": 6.2,
+    "ev_range": [3.5, 8.5],
+    "avg_kelly_half": 12.4
+  }
 }
 ```
 
@@ -605,52 +622,69 @@ Example: nfl/data/analysis/2025-10-27/kc_was.json
 ### Analysis Generation (shared/base/analyzer.py)
 ```
 generate_analysis(game_key, game_meta)
-  ├─ 1. Load prediction JSON (has parlays/bets)
+  ├─ 1. Load prediction JSON (has 5 EV+ bets)
   ├─ 2. Load result JSON (has final score/stats)
   ├─ 3. Build sport-specific analysis prompt
   ├─ 4. Call Claude API with both prediction and result data
-  ├─ 5. Parse Claude's JSON response (parlay results, leg accuracy)
-  ├─ 6. Add metadata (dates, costs, tokens)
-  ├─ 7. Save analysis JSON
-  └─ 8. Update predictions metadata: analysis_generated = true
+  ├─ 5. Parse Claude's JSON response (bet-by-bet win/loss + P&L)
+  ├─ 6. Calculate profit/loss for each bet:
+  │    - Win: $100 × (odds/100)
+  │    - Loss: -$100
+  ├─ 7. Add metadata (dates, costs, tokens)
+  ├─ 8. Save analysis JSON
+  └─ 9. Update predictions metadata: analysis_generated = true
 ```
 
-### Analysis Output Structure
+### Analysis Output Structure (EV+ P&L Format)
 ```json
 {
-  "parlay_results": [
+  "bet_results": [
     {
-      "parlay_name": "Parlay 1: Washington Commanders Wins",
-      "original_confidence": 92,
-      "hit": false,
-      "legs_hit": 2,
-      "legs_total": 4,
-      "hit_rate": 50.0,
-      "parlay_reasoning": "This parlay was built around...",
-      "legs": [
-        {
-          "bet": "Washington Commanders Moneyline",
-          "hit": false,
-          "actual_value": "...",
-          "margin": null,
-          "reasoning": "..."
-        },
-        ...
-      ]
-    }
+      "rank": 1,
+      "bet": "Patrick Mahomes Over 250.5 Passing Yards",
+      "odds": 150,
+      "ev_percent": 8.5,
+      "implied_probability": 40.0,
+      "true_probability": 58.0,
+      "kelly_half": 14.7,
+      "won": true,
+      "actual_value": "299 passing yards",
+      "stake": 100,
+      "profit": 150.00,
+      "reasoning": "Mahomes completed 25/34 passes for 299 yards..."
+    },
+    {
+      "rank": 2,
+      "bet": "Travis Kelce Under 65.5 Receiving Yards",
+      "odds": 120,
+      "ev_percent": 5.2,
+      "implied_probability": 45.5,
+      "true_probability": 62.0,
+      "kelly_half": 11.8,
+      "won": false,
+      "actual_value": "99 receiving yards",
+      "stake": 100,
+      "profit": -100.00,
+      "reasoning": "Kelce exceeded line by 33.5 yards..."
+    },
+    ...
   ],
   "summary": {
-    "parlays_hit": 0,
-    "parlays_total": 3,
-    "parlay_hit_rate": 0.0,
-    "legs_hit": 2,
-    "legs_total": 12,
-    "legs_hit_rate": 16.7,
-    "avg_confidence_hit_parlays": 0.0,
-    "avg_confidence_miss_parlays": 94.3,
-    "close_misses": 1
+    "total_bets": 5,
+    "bets_won": 3,
+    "bets_lost": 2,
+    "win_rate": 60.0,
+    "total_profit": 210.00,
+    "total_staked": 500.00,
+    "roi_percent": 42.0,
+    "avg_predicted_ev": 6.2,
+    "realized_ev": 3.5
   },
-  "insights": ["...", "..."]
+  "insights": [
+    "3 of 5 bets hit for 60% win rate and +42% ROI",
+    "Passing yard props outperformed (2/2 winners)",
+    "True probability estimates were conservative but accurate"
+  ]
 }
 ```
 

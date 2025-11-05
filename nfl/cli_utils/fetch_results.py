@@ -24,7 +24,6 @@ from nfl.teams import DK_TO_PFR_ABBR
 # Initialize services
 console = Console()
 predictions_metadata_service = PredictionsMetadataService(get_metadata_path("nfl", "predictions"))
-ev_predictions_metadata_service = MetadataService(get_metadata_path("nfl", "predictions_ev"))
 results_repo = ResultsRepository("nfl")
 
 
@@ -145,21 +144,24 @@ def fetch_game_result_with_fallback(config, fetcher, game_date, home_team_abbr_d
 
 
 def fetch_results():
-    """Fetch results for all NFL games that have predictions but no results yet.
+    """Fetch results for NFL predictions and calculate P&L.
 
     Workflow:
     1. Load predictions metadata
-    2. Filter games where results_fetched != true (all dates/weeks)
-    3. Display count of games to fetch
-    4. Confirm with user
-    5. Use NFLResultsFetcher to fetch results from Pro-Football-Reference
-    6. Save results to nfl/results/{date}/{game}.json
-    7. Update predictions metadata: results_fetched = true
-    8. Display summary (success/failed counts)
+    2. Filter games where results_fetched != true
+    3. For each game:
+       - Fetch game results from Pro-Football-Reference
+       - Load prediction JSON to get the 5 bets
+       - Analyze each bet (win/loss)
+       - Calculate P&L: Win = FIXED_BET_AMOUNT * (odds/100), Loss = -FIXED_BET_AMOUNT
+       - Save to nfl/data/results/{date}/{game}.json
+    4. Update predictions metadata
     """
-    print_header("📊 NFL RESULTS FETCHER 📊")
+    from nfl.constants import FIXED_BET_AMOUNT
 
-    # Load predictions metadata using service
+    print_header("💰 NFL RESULTS & P/L TRACKER 💰")
+
+    # Load metadata using service
     metadata = predictions_metadata_service.load_metadata()
 
     if not metadata:
@@ -167,214 +169,6 @@ def fetch_results():
         console.print(Panel(
             "[yellow]No predictions found[/yellow]\n\n"
             "Generate some predictions first using the 'Predict Game' option.",
-            title="[bold yellow]⚠ No Data ⚠[/bold yellow]",
-            border_style="yellow",
-            padding=(1, 2)
-        ))
-        return
-
-    # Filter games that need results fetched
-    games_to_fetch = []
-    for game_key, game_meta in metadata.items():
-        # Check if results already fetched
-        if game_meta.get("results_fetched", False):
-            continue
-
-        # Validate metadata has required fields
-        if not game_meta.get("home_team_abbr") or not game_meta.get("game_date"):
-            console.print(f"[dim]Skipping {game_key}: missing required metadata[/dim]")
-            continue
-
-        games_to_fetch.append({
-            "key": game_key,
-            "meta": game_meta
-        })
-
-    if not games_to_fetch:
-        console.print()
-        console.print(Panel(
-            "[green]All games already have results fetched![/green]\n\n"
-            "No pending games need results.",
-            title="[bold green]✅ Up to Date ✅[/bold green]",
-            border_style="green",
-            padding=(1, 2)
-        ))
-        return
-
-    # Group games by date/week for display
-    games_by_date = defaultdict(list)
-    for game in games_to_fetch:
-        date = game["meta"].get("game_date", "unknown")
-        matchup = f"{game['meta']['teams'][0]} vs {game['meta']['teams'][1]}"
-        games_by_date[date].append(matchup)
-
-    # Display games to fetch
-    console.print()
-    console.print(f"[bold]Found {len(games_to_fetch)} game(s) needing results:[/bold]\n")
-
-    for date, matchups in sorted(games_by_date.items()):
-        console.print(f"  [cyan]{date}[/cyan]")
-        for matchup in matchups:
-            console.print(f"    • {matchup}")
-    console.print()
-
-    # Confirm with user
-    questions = [
-        inquirer.Confirm(
-            "proceed",
-            message=f"Fetch results for {len(games_to_fetch)} game(s)?",
-            default=True
-        )
-    ]
-    answers = inquirer.prompt(questions)
-
-    if not answers or not answers["proceed"]:
-        print_cancelled()
-        return
-
-    # Initialize fetcher, analyzer, and config
-    config = NFLConfig()
-    fetcher = NFLResultsFetcher(config)
-    analyzer = NFLAnalyzer(config)
-
-    # Fetch results with rate limiting
-    console.print()
-    console.print("[bold]Fetching results...[/bold]\n")
-
-    success_count = 0
-    failed_count = 0
-    skipped_count = 0
-    analysis_success_count = 0
-    analysis_failed_count = 0
-    errors = []
-    total_cost = 0.0
-    total_tokens = 0
-    start_time = datetime.now()
-
-    for idx, game in enumerate(games_to_fetch, 1):
-        game_key = game["key"]
-        game_meta = game["meta"]
-
-        # Extract metadata
-        game_date = game_meta["game_date"]
-        home_team_abbr = game_meta["home_team_abbr"]
-        teams = game_meta["teams"]
-
-        matchup = f"{teams[0]} vs {teams[1]}"
-        console.print(f"\n[bold cyan]━━━ Game {idx}/{len(games_to_fetch)}: {matchup} ━━━[/bold cyan]")
-
-        try:
-            # Fetch game result with fallback abbreviations
-            console.print(f"  [dim]→ Fetching results from Pro-Football-Reference...[/dim]")
-            result_data, abbr_used = fetch_game_result_with_fallback(config, fetcher, game_date, home_team_abbr)
-
-            # Add game_date to result (in case it's not already there)
-            result_data["game_date"] = game_date
-
-            # Save result using repository
-            # Extract team abbreviations from game_key for save
-            # game_key format: "{date}_{home_abbr}_{away_abbr}" (e.g., "2025-11-02_cin_chi")
-            parts = game_key.split("_")
-            if parts[0] == game_date:
-                # Remove date prefix - remaining parts are home and away abbrs
-                home_abbr = parts[1] if len(parts) > 1 else home_team_abbr
-                away_abbr = parts[2] if len(parts) > 2 else "unknown"
-            else:
-                # Fallback: use metadata
-                home_abbr = home_team_abbr
-                away_abbr = "unknown"
-
-            results_repo.save_result(game_date, away_abbr, home_abbr, result_data)
-
-            # Update metadata using service
-            metadata[game_key]["results_fetched"] = True
-            metadata[game_key]["results_fetched_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            predictions_metadata_service.save_metadata(metadata)
-
-            success_count += 1
-            console.print(f"  [green]✅ Result: {result_data['final_score']['away']}-{result_data['final_score']['home']} ({result_data.get('winner', 'Unknown')} wins)[/green]")
-
-            # Generate analysis automatically
-            # Parlay analysis disabled - use EV singles analysis instead
-            console.print(f"  [dim]→ Parlay analysis disabled (use EV singles for analysis)[/dim]")
-
-        except Exception as e:
-            error_msg = str(e)
-
-            # Check if game not played yet
-            if "404" in error_msg or "not found" in error_msg.lower():
-                skipped_count += 1
-                console.print(f"  [yellow]⏭️  Not played yet[/yellow]")
-            else:
-                failed_count += 1
-                errors.append({
-                    "game": matchup,
-                    "error": error_msg
-                })
-                console.print(f"  [red]❌ Error: {error_msg}[/red]")
-
-        # No rate limiting needed - parlay analysis is disabled
-
-    # Calculate total time
-    end_time = datetime.now()
-    total_time = end_time - start_time
-    total_minutes = int(total_time.total_seconds() / 60)
-    total_seconds = int(total_time.total_seconds() % 60)
-
-    # Display summary
-    console.print()
-    console.print("[bold green]" + "═" * 60 + "[/bold green]")
-    console.print(Panel.fit(
-        f"[bold]RESULTS FETCHING COMPLETE[/bold]\n\n"
-        f"[green]✅ Successfully fetched: {success_count} game(s)[/green]\n"
-        f"[yellow]⏭️  Skipped (not played): {skipped_count} game(s)[/yellow]\n"
-        f"[red]❌ Failed: {failed_count} game(s)[/red]\n\n"
-        f"[bold]ANALYSIS RESULTS[/bold]\n"
-        f"[green]✅ Analyzed: {analysis_success_count} game(s)[/green]\n"
-        f"[red]❌ Analysis failed: {analysis_failed_count} game(s)[/red]\n\n"
-        f"[bold cyan]💰 Total API cost: ${total_cost:.4f}[/bold cyan]\n"
-        f"[dim]Total tokens: {total_tokens:,}[/dim]\n"
-        f"[dim]⏱️  Total time: {total_minutes}m {total_seconds}s[/dim]",
-        title="[bold cyan]Summary[/bold cyan]",
-        border_style="cyan",
-        padding=(1, 2)
-    ))
-    console.print("[bold green]" + "═" * 60 + "[/bold green]")
-
-    # Display errors if any
-    if errors:
-        console.print()
-        console.print("[bold red]Errors:[/bold red]")
-        for error in errors:
-            console.print(f"  • {error['game']}: {error['error']}")
-
-
-def fetch_ev_results():
-    """Fetch results for EV+ Singles predictions and calculate P&L.
-
-    Workflow:
-    1. Load EV predictions metadata
-    2. Filter games where results_fetched != true
-    3. For each game:
-       - Fetch game results from Pro-Football-Reference
-       - Load prediction JSON to get the 5 bets
-       - Analyze each bet (win/loss)
-       - Calculate P&L: Win = FIXED_BET_AMOUNT * (odds/100), Loss = -FIXED_BET_AMOUNT
-       - Save to nfl/data/results_ev/{date}/{game}.json
-    4. Update predictions_ev metadata
-    """
-    from nfl.constants import FIXED_BET_AMOUNT
-
-    print_header("💰 NFL EV+ RESULTS & P/L TRACKER 💰")
-
-    # Load metadata using service
-    metadata = ev_predictions_metadata_service.load_metadata()
-
-    if not metadata:
-        console.print()
-        console.print(Panel(
-            "[yellow]No EV+ predictions found[/yellow]\n\n"
-            "Generate some EV+ predictions first using the 'Predict Game (EV+ Singles)' option.",
             title="[bold yellow]⚠ No Data ⚠[/bold yellow]",
             border_style="yellow",
             padding=(1, 2)
@@ -402,7 +196,7 @@ def fetch_ev_results():
     if not games_to_fetch:
         console.print()
         console.print(Panel(
-            "[green]All EV+ predictions already have results![/green]\n\n"
+            "[green]All predictions already have results![/green]\n\n"
             "No pending games need results.",
             title="[bold green]✅ Up to Date ✅[/bold green]",
             border_style="green",
@@ -437,8 +231,7 @@ def fetch_ev_results():
     # Initialize fetcher and analyzer
     config = NFLConfig()
     fetcher = NFLResultsFetcher(config)
-    from nfl.nfl_ev_analyzer import NFLEVAnalyzer
-    ev_analyzer = NFLEVAnalyzer(config)
+    analyzer = NFLAnalyzer(config)
 
     # Process each game
     console.print()
@@ -489,7 +282,7 @@ def fetch_ev_results():
                 # Update metadata using service
                 metadata[game_key]["results_fetched"] = True
                 metadata[game_key]["results_fetched_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                ev_predictions_metadata_service.save_metadata(metadata)
+                predictions_metadata_service.save_metadata(metadata)
             else:
                 console.print("  ├─ [dim]Results already fetched, skipping...[/dim]")
 
@@ -498,13 +291,13 @@ def fetch_ev_results():
                 console.print("  ├─ Analyzing with Claude AI...", style="dim")
 
                 try:
-                    analysis_data = ev_analyzer.generate_analysis(game_key, game_meta)
+                    analysis_data = analyzer.generate_analysis(game_key, game_meta)
                     anthropic_api_called = True
 
                     # Update metadata using service
                     metadata[game_key]["analysis_generated"] = True
                     metadata[game_key]["analysis_generated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    ev_predictions_metadata_service.save_metadata(metadata)
+                    predictions_metadata_service.save_metadata(metadata)
 
                     # Display P/L summary
                     summary = analysis_data.get('summary', {})

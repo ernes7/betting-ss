@@ -10,16 +10,16 @@ nfl/data/
 │   └── .metadata.json     [last_scraped: "2025-10-26"]
 ├── profiles/{team}/       ← Per-team stats (8 JSON files each)
 │   └── .metadata.json     [team_name: "YYYY-MM-DD"]
-├── predictions/           ← AI-generated predictions
+├── predictions/           ← EV+ predictions with Kelly stakes
 │   ├── 2025-10-27/
 │   │   ├── kc_was.md
-│   │   └── kc_was.json
+│   │   └── kc_was.json   [5 EV+ bets ranked by expected value]
 │   └── .metadata.json     [game_key: {...full game tracking...}]
 ├── results/               ← Boxscore data (after games)
 │   └── 2025-10-27/kc_was.json
-├── analysis/              ← Prediction accuracy analysis
-│   └── 2025-10-27/kc_was.json
-└── odds/                  ← Betting odds (NEW)
+├── analysis/              ← P&L analysis with ROI tracking
+│   └── 2025-10-27/kc_was.json [bet-by-bet win/loss, profit/loss]
+└── odds/                  ← Betting odds (REQUIRED for EV analysis)
     └── 2025-10-31/BAL_vs_MIA_full.json
 ```
 
@@ -118,11 +118,13 @@ Pro-Football-Reference → shared/base/scraper.extract_team_profile()
                       → Update profiles/.metadata.json
 ```
 
-### 3. Predict Game (Per-game request)
+### 3. Predict Game (Per-game request with odds)
 ```
-User inputs (Team A, B, Home, Date)
+User inputs (Team A, B, Home, Date, DraftKings URL)
+  → Fetch and save betting odds
   → Load rankings + profiles
-  → Claude AI (with all data)
+  → Claude AI (rankings + profiles + odds → EV analysis)
+  → Generate top 5 EV+ bets with Kelly Criterion
   → nfl/data/predictions/{date}/{home}_{away}.{md,json}
   → Update predictions/.metadata.json
 ```
@@ -144,7 +146,10 @@ predictions/.metadata.json (finds games with results_fetched=false)
 ### 6. Analyze Predictions (After results available)
 ```
 predictions/{date}/{file}.json + results/{date}/{file}.json
-  → Claude AI comparison
+  → Claude AI: Compare each bet vs actual stats
+  → Calculate win/loss for each of 5 bets
+  → Calculate P&L: Win = $100 × (odds/100), Loss = -$100
+  → Calculate total ROI, win rate, realized edge
   → nfl/data/analysis/{date}/{file}.json
   → Update predictions/.metadata.json (analysis_generated=true)
 ```
@@ -156,11 +161,11 @@ predictions/{date}/{file}.json + results/{date}/{file}.json
 predict_game()
   ├─ load_predictions_metadata()         (reads predictions/.metadata.json)
   ├─ was_game_predicted_today()          (checks metadata for reuse)
+  ├─ fetch_and_save_odds_from_url()      (fetches DraftKings odds - REQUIRED)
   ├─ load_team_profiles()                (reads from profiles/{team}/)
   ├─ nfl_sport.scraper.extract_rankings() (reads from rankings/)
-  ├─ nfl_sport.predictor.generate_parlays() (calls Claude API)
-  ├─ save_prediction_to_markdown()       (writes .md file)
-  ├─ save_prediction_to_markdown()       (also writes .json file)
+  ├─ nfl_sport.predictor.generate_predictions() (calls Claude API with EV analysis)
+  ├─ save_ev_prediction_to_files()       (writes .md and .json files)
   └─ save_predictions_metadata()         (updates metadata)
 ```
 
@@ -272,7 +277,14 @@ Prompt includes:
   3. Team B stats extracted from rankings
   4. Team A detailed profile data
   5. Team B detailed profile data
-  6. Game context (home/away, date)
+  6. Betting odds from DraftKings (game lines + player props)
+  7. EV calculation methodology and Kelly Criterion formulas
+  8. Game context (home/away, date)
+
+Claude returns:
+  - Top 5 EV+ bets ranked by expected value
+  - For each bet: Implied prob, true prob, EV%, Kelly full/half stake
+  - Game analysis explaining the edge
 ```
 
 ## Accessing the Analysis
