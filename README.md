@@ -1,16 +1,16 @@
 # Sports Betting Analysis Tool
 
-AI-powered betting analysis system with Expected Value (EV+) analysis and Kelly Criterion stake sizing. Combines web scraping, odds integration, and Claude AI to identify profitable betting opportunities.
+AI-powered EV+ betting analytics platform. Identifies profitable betting opportunities (+3% minimum EV, typically 3-15%) using Claude Sonnet 4.5, optimal stake sizing via Kelly Criterion, and comprehensive P&L tracking.
 
 ## Features
 
-- **EV+ Analysis**: Identifies positive expected value bets by comparing true probability vs implied odds
-- **Kelly Criterion**: Calculates optimal bet sizing to maximize long-term growth
-- **Automated Data Extraction**: Scrapes rankings, team profiles, injury reports, and betting odds
-- **AI Analysis**: Claude Sonnet 4.5 generates top 5 EV+ bets ranked by expected value
-- **Profit/Loss Tracking**: Analyzes actual game results to calculate P&L and ROI
-- **Smart Caching**: Metadata tracking avoids redundant scraping (once per day limit)
-- **Rich CLI**: Interactive menu with markdown-rendered predictions and analysis
+- **EV+ Analysis**: Finds positive expected value bets by comparing AI-predicted probability vs bookmaker odds
+- **Kelly Criterion**: Calculates optimal bet sizing (full/half Kelly) to maximize long-term growth
+- **Automated Pipeline**: Scrapes team rankings, profiles, injury reports, and DraftKings betting odds
+- **AI-Powered Predictions**: Claude Sonnet 4.5 analyzes 40K+ tokens to generate top 5 EV+ bets
+- **P&L Tracking**: Post-game analysis with ROI, win rate, and realized edge calculations
+- **Streamlit Dashboard**: Interactive web UI with profit charts, filterable predictions, and analysis overlay
+- **Rich CLI**: Terminal interface with markdown-rendered predictions and interactive menus
 
 ## Supported Sports
 
@@ -51,27 +51,25 @@ echo "ANTHROPIC_API_KEY=your_key_here" > .env
 
 ## Usage
 
+### CLI Interface
 ```bash
 poetry run python cli.py
 ```
 
-### Workflow
-1. **Select Sport** (NFL/NBA)
-2. **Predict Game**: Enter date, select teams, provide DraftKings URL for odds
-3. **Fetch Results**: Automatically analyze predictions and calculate P&L
-4. **Review Analysis**: View bet-by-bet results, ROI, and insights
+**Workflow**: Select sport → Scrape rankings/profiles → Provide DraftKings odds URL → Generate EV+ predictions → Fetch results → Analyze P&L
 
-### EV+ Prediction Output
-- Top 5 individual bets ranked by expected value
-- Kelly Criterion full/half stakes for optimal bankroll management
-- Implied probability vs true probability for each bet
-- Game analysis explaining why these bets have edge
+### Streamlit Dashboard
+```bash
+streamlit run streamlit/app.py
+```
 
-### P&L Analysis Output
-- Win/loss status for each bet
-- Profit/loss per bet (uses $100 fixed stake)
-- Total ROI, win rate, and realized edge
-- Insights about prediction accuracy
+**Features**: View all predictions, filter by date/status, visualize profits with interactive charts, analyze bet-by-bet results
+
+## Output Examples
+
+**EV+ Predictions**: Top 5 individual bets ranked by expected value (+3% minimum), Kelly Criterion full/half stakes, implied vs true probability, reasoning for each edge
+
+**P&L Analysis**: Win/loss per bet, profit/loss at $100 fixed stake, total ROI, win rate, realized vs predicted edge, accuracy insights
 
 ## Adding New Sports (NHL/MLB)
 
