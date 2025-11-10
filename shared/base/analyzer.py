@@ -10,6 +10,7 @@ from anthropic import Anthropic
 from shared.base.sport_config import SportConfig
 from shared.repositories import PredictionRepository, ResultsRepository, AnalysisRepository
 from shared.config import calculate_api_cost
+from shared.utils.timezone_utils import get_eastern_now
 
 
 class BaseAnalyzer(ABC):
@@ -81,7 +82,7 @@ class BaseAnalyzer(ABC):
             "final_score": result_data.get("final_score"),
             "prediction_file": self._get_prediction_identifier(game_key, game_meta),
             "result_file": self._get_result_identifier(game_key, game_meta),
-            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "generated_at": get_eastern_now().strftime("%Y-%m-%d %H:%M:%S"),
             "model": self.model,
             "api_cost": cost,
             "tokens": tokens

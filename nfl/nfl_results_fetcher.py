@@ -8,6 +8,7 @@ from shared.base.results_fetcher import ResultsFetcher
 from shared.base.sport_config import SportConfig
 from shared.utils import WebScraper, TableExtractor
 from shared.utils.data_optimizer import split_player_offense_result
+from shared.utils.timezone_utils import get_eastern_now
 
 
 class NFLResultsFetcher(ResultsFetcher):
@@ -74,7 +75,7 @@ sk
             "final_score": {"away": None, "home": None},
             "winner": None,
             "boxscore_url": boxscore_url,
-            "fetched_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "fetched_at": get_eastern_now().strftime("%Y-%m-%d %H:%M:%S"),
             "tables": {}
         }
 

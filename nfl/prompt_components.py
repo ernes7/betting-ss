@@ -33,13 +33,13 @@ class NFLPromptComponents:
 - Injured players should ONLY be mentioned in reasoning to explain team weaknesses/strengths"""
 
     stat_tables_to_analyze = """
-  RANKING TABLES (league-wide, 2 teams extracted with rank/percentile): 
-    afc_standings, nfc_standings, passing_offense, rushing_offense, scoring_offense, 
+  RANKING TABLES (league-wide, 2 teams extracted with rank/percentile):
+    afc_standings, nfc_standings, passing_offense, rushing_offense, scoring_offense,
   team_offense
 
-  TEAM PROFILE TABLES (per team, optimized): 
+  TEAM PROFILE TABLES (per team, optimized):
     - Full tables: team_stats, schedule_results, injury_report
-    - Filtered tables: passing (top 2 QBs), top_rushers (top 5), top_receivers (top 5), 
+    - Filtered tables: passing (top 2 QBs), top_rushers (top 5), top_receivers (top 5),
   defense_fumbles (top 10)
   """
 

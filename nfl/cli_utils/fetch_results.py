@@ -14,6 +14,7 @@ from rich.panel import Panel
 from shared.services import MetadataService, PredictionsMetadataService
 from shared.repositories import ResultsRepository
 from shared.utils.console_utils import print_header, print_cancelled
+from shared.utils.timezone_utils import get_eastern_now
 from shared.config import get_metadata_path
 
 from nfl.nfl_config import NFLConfig
@@ -281,7 +282,7 @@ def fetch_results():
 
                 # Update metadata using service
                 metadata[game_key]["results_fetched"] = True
-                metadata[game_key]["results_fetched_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                metadata[game_key]["results_fetched_at"] = get_eastern_now().strftime("%Y-%m-%d %H:%M:%S")
                 predictions_metadata_service.save_metadata(metadata)
             else:
                 console.print("  ├─ [dim]Results already fetched, skipping...[/dim]")
@@ -296,7 +297,7 @@ def fetch_results():
 
                     # Update metadata using service
                     metadata[game_key]["analysis_generated"] = True
-                    metadata[game_key]["analysis_generated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    metadata[game_key]["analysis_generated_at"] = get_eastern_now().strftime("%Y-%m-%d %H:%M:%S")
                     predictions_metadata_service.save_metadata(metadata)
 
                     # Display P/L summary

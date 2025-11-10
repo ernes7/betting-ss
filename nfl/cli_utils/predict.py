@@ -2,6 +2,7 @@
 
 import os
 import re
+import json
 import inquirer
 from datetime import date, datetime
 from pathlib import Path
@@ -26,6 +27,7 @@ from shared.utils.console_utils import (
     console
 )
 from shared.utils.validation_utils import is_valid_inquirer_date
+from shared.utils.timezone_utils import get_eastern_now
 from shared.config import get_metadata_path, get_file_path
 
 # Import sport factory and scrapers
@@ -143,16 +145,19 @@ def save_ev_prediction_to_files(
     team_a: str,
     team_b: str,
     home_team: str,
-    team_a_abbr: str,
-    team_b_abbr: str,
+    team_a_pfr_abbr: str,
+    team_b_pfr_abbr: str,
     prediction_text: str,
     cost: float,
     model: str,
     tokens: dict
 ):
-    """Save EV prediction to markdown and JSON files using repository."""
+    """Save EV prediction to markdown and JSON files using repository.
+
+    Note: Uses PFR abbreviations for file naming consistency with odds files.
+    """
     # Build markdown content
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = get_eastern_now().strftime("%Y-%m-%d %H:%M:%S")
     markdown = f"""# {team_a} vs {team_b} - EV+ Singles - {game_date}
 
 **Home Team**: {home_team}
@@ -205,15 +210,15 @@ def save_ev_prediction_to_files(
         "summary": summary
     }
 
-    # Determine correct order (home team first)
+    # Determine correct order (home team first) - using PFR abbreviations
     if home_team == team_a:
-        home_abbr, away_abbr = team_a_abbr, team_b_abbr
+        home_pfr, away_pfr = team_a_pfr_abbr, team_b_pfr_abbr
     else:
-        home_abbr, away_abbr = team_b_abbr, team_a_abbr
+        home_pfr, away_pfr = team_b_pfr_abbr, team_a_pfr_abbr
 
-    # Save using repository
-    prediction_repo.save_prediction(game_date, home_abbr, away_abbr, markdown, file_format="md")
-    prediction_repo.save_prediction(game_date, home_abbr, away_abbr, prediction_data, file_format="json")
+    # Save using repository (with PFR abbreviations for consistency with odds files)
+    prediction_repo.save_prediction(game_date, home_pfr, away_pfr, markdown, file_format="md")
+    prediction_repo.save_prediction(game_date, home_pfr, away_pfr, prediction_data, file_format="json")
 
 
 def predict_game():
@@ -270,6 +275,12 @@ def predict_game():
     home_abbr = team_a_abbr if home_team == team_a else team_b_abbr
     away_abbr = team_b_abbr if home_team == team_a else team_a_abbr
 
+    # Get PFR abbreviations for odds file operations
+    team_a_pfr = team_service.get_team_pfr_abbreviation(team_a)
+    team_b_pfr = team_service.get_team_pfr_abbreviation(team_b)
+    home_pfr = team_a_pfr if home_team == team_a else team_b_pfr
+    away_pfr = team_b_pfr if home_team == team_a else team_a_pfr
+
     # Display matchup
     console.print()
     matchup_text = f"[bold white]{team_a}[/bold white] @ [bold white]{team_b}[/bold white] - {game_date}\n"
@@ -304,8 +315,8 @@ def predict_game():
                 print_info("Generating new prediction...")
                 console.print()
 
-    # Check if odds already exist using odds service
-    existing_odds = odds_service.load_odds_for_game(game_date, team_a_abbr, team_b_abbr, home_abbr)
+    # Check if odds already exist using odds service (use PFR abbreviations)
+    existing_odds = odds_service.load_odds_for_game(game_date, team_a_pfr, team_b_pfr, home_pfr)
 
     if not existing_odds:
         # Prompt for DraftKings URL
@@ -329,8 +340,8 @@ def predict_game():
         dk_url = url_answers["dk_url"].strip()
 
         if dk_url:
-            # Fetch and save odds from URL
-            odds_data = fetch_and_save_odds_from_url(dk_url, game_date, team_a_abbr, team_b_abbr, home_abbr)
+            # Fetch and save odds from URL (use PFR abbreviations)
+            odds_data = fetch_and_save_odds_from_url(dk_url, game_date, team_a_pfr, team_b_pfr, home_pfr)
             if not odds_data:
                 print_error("Failed to fetch odds. Cannot generate EV predictions without odds.")
                 return
@@ -375,10 +386,10 @@ def predict_game():
         console.print(Panel(error_text, border_style="red", padding=(1, 2)))
         return
 
-    # Load odds (REQUIRED for EV analysis) using odds service
+    # Load odds (REQUIRED for EV analysis) using odds service (use PFR abbreviations)
     console.print()
     print_info("📊 Loading betting odds (required for EV analysis)...")
-    odds_data = odds_service.load_odds_for_game(game_date, team_a_abbr, team_b_abbr, home_abbr)
+    odds_data = odds_service.load_odds_for_game(game_date, team_a_pfr, team_b_pfr, home_pfr)
 
     if not odds_data:
         console.print()
@@ -437,7 +448,7 @@ def predict_game():
     try:
         save_ev_prediction_to_files(
             game_date, team_a, team_b, home_team,
-            team_a_abbr, team_b_abbr,
+            team_a_pfr, team_b_pfr,
             prediction_text, cost, model, tokens
         )
 
@@ -463,3 +474,253 @@ def predict_game():
             border_style="red",
             padding=(1, 2)
         ))
+
+
+def predict_all_games():
+    """Predict all games for a date using schedule.json (batch mode).
+
+    Workflow:
+    1. Load schedule.json for the selected date
+    2. Filter games: not started AND odds fetched
+    3. Auto-fetch rankings once (shared across all predictions)
+    4. For each game:
+       - Skip if already predicted today
+       - Load profiles (with auto-scrape if needed)
+       - Load odds from file
+       - Generate prediction
+       - Save results
+    5. Display summary
+    """
+    print_header("📊 NFL BATCH PREDICTION 📊")
+    console.print()
+    console.print("[dim]Predict all games for a date automatically using schedule.json[/dim]")
+    console.print()
+
+    # Ask for game date
+    today = get_eastern_now().strftime("%Y-%m-%d")
+    date_questions = [
+        inquirer.Text(
+            "game_date",
+            message=f"Enter game date (YYYY-MM-DD) [default: {today}]",
+            default=today,
+            validate=is_valid_inquirer_date
+        )
+    ]
+    date_answers = inquirer.prompt(date_questions)
+    if not date_answers:
+        print_cancelled()
+        return
+
+    game_date = date_answers["game_date"]
+
+    # Load schedule.json
+    schedule_path = Path(f"nfl/data/odds/{game_date}/schedule.json")
+    if not schedule_path.exists():
+        console.print()
+        console.print(Panel(
+            f"[bold red]Schedule file not found![/bold red]\n\n"
+            f"[yellow]Expected location:[/yellow]\n{schedule_path}\n\n"
+            f"[cyan]Please run 'Fetch Odds' first to generate the schedule file.[/cyan]\n\n"
+            f"[dim]The schedule file is created automatically when you fetch odds for a date.[/dim]",
+            border_style="red",
+            padding=(1, 2)
+        ))
+        return
+
+    try:
+        with open(schedule_path, 'r', encoding='utf-8') as f:
+            schedule = json.load(f)
+    except Exception as e:
+        print_error(f"Failed to load schedule file: {str(e)}")
+        return
+
+    # Filter games: not started AND odds fetched
+    games_to_predict = [
+        g for g in schedule['games']
+        if not g.get('has_started', False) and g.get('odds_fetched', False)
+    ]
+
+    # Show status
+    console.print()
+    if not games_to_predict:
+        console.print(Panel(
+            f"[bold yellow]No games available for prediction![/bold yellow]\n\n"
+            f"[dim]Analyzed {len(schedule['games'])} game(s) in schedule:[/dim]\n"
+            f"• Games already started: {sum(1 for g in schedule['games'] if g.get('has_started', False))}\n"
+            f"• Games missing odds: {sum(1 for g in schedule['games'] if not g.get('odds_fetched', False))}\n"
+            f"• Ready for prediction: {len(games_to_predict)}",
+            border_style="yellow",
+            padding=(1, 2)
+        ))
+        return
+
+    # Display games to be predicted
+    game_list = "\n".join([
+        f"  {idx}. {g['teams']['away']['name']} @ {g['teams']['home']['name']}"
+        + (f" ({g.get('game_time_display', 'TBD')})" if g.get('game_time_display') else "")
+        for idx, g in enumerate(games_to_predict, 1)
+    ])
+
+    console.print(Panel(
+        f"[bold]Found {len(games_to_predict)} game(s) ready for prediction:[/bold]\n\n{game_list}",
+        title="[bold green]🎯 Batch Prediction Queue[/bold green]",
+        border_style="green",
+        padding=(1, 2)
+    ))
+
+    # Confirm
+    confirm_questions = [
+        inquirer.Confirm(
+            "proceed",
+            message=f"Proceed with batch prediction for {len(games_to_predict)} game(s)?",
+            default=True
+        )
+    ]
+    confirm_answers = inquirer.prompt(confirm_questions)
+    if not confirm_answers or not confirm_answers["proceed"]:
+        print_cancelled()
+        return
+
+    # Auto-fetch rankings once (shared across all predictions)
+    console.print()
+    if not nfl_sport.scraper.rankings_metadata_mgr.was_scraped_today():
+        print_info("📊 Fetching fresh rankings (shared across all predictions)...")
+        nfl_sport.scraper.extract_rankings()
+    else:
+        print_info("📊 Using today's rankings (shared across all predictions)...")
+
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+        progress.add_task(description="Loading ranking data...", total=None)
+        rankings = nfl_sport.predictor.load_ranking_tables()
+
+    if not rankings:
+        print_error("Could not load rankings. Cannot proceed.")
+        return
+
+    print_success("Rankings loaded successfully")
+
+    # Predict each game
+    console.print()
+    console.print("[bold cyan]Starting batch prediction...[/bold cyan]")
+    console.print()
+
+    success_count = 0
+    skipped_count = 0
+    failed_games = []
+    total_cost = 0.0
+
+    for idx, game in enumerate(games_to_predict, 1):
+        away_name = game['teams']['away']['name']
+        home_name = game['teams']['home']['name']
+        away_pfr = game['teams']['away']['pfr_abbr']
+        home_pfr = game['teams']['home']['pfr_abbr']
+
+        console.print(f"[cyan][{idx}/{len(games_to_predict)}][/cyan] {away_name} @ {home_name}...", end=" ")
+
+        try:
+            # Check if already predicted today
+            was_predicted, _ = predictions_metadata_service.was_game_predicted_today(
+                game_date, away_pfr, home_pfr, home_pfr
+            )
+
+            if was_predicted:
+                console.print("[yellow]⊘ Already predicted (skipping)[/yellow]")
+                skipped_count += 1
+                continue
+
+            # Load profiles (with auto-scrape if needed)
+            profiles = profile_service.load_team_profiles(away_name, home_name)
+
+            if not profiles.get(away_name) or not profiles.get(home_name):
+                raise Exception(f"Failed to load team profiles")
+
+            # Load odds from file
+            odds_data = odds_service.load_odds_for_game(game_date, away_pfr, home_pfr, home_pfr)
+
+            if not odds_data:
+                raise Exception("Odds file not found despite schedule indicating odds_fetched=true")
+
+            # Generate prediction
+            result = nfl_sport.predictor.generate_predictions(
+                team_a=away_name,
+                team_b=home_name,
+                home_team=home_name,
+                rankings=rankings,
+                profile_a=profiles[away_name],
+                profile_b=profiles[home_name],
+                odds=odds_data
+            )
+
+            # Check for errors
+            if not result['success']:
+                raise Exception(result.get('error', 'Unknown prediction error'))
+
+            # Extract values from result
+            prediction_text = result['prediction']
+            cost = result['cost']
+            tokens = result['tokens']
+            model = result['model']
+
+            # Parse bets from prediction
+            bets = parse_ev_singles_text(prediction_text)
+
+            # Save prediction files
+            save_ev_prediction_to_files(
+                game_date, away_name, home_name, home_name,
+                away_pfr, home_pfr,
+                prediction_text, cost, model, tokens
+            )
+
+            # Update metadata
+            game_key = f"{game_date}_{home_pfr}_{away_pfr}"
+            predictions_metadata_service.mark_game_predicted(
+                game_key,
+                game_date,
+                [away_name, home_name],
+                home_name,
+                home_pfr,
+                odds_used=True,
+                odds_source="draftkings"
+            )
+
+            console.print(f"[green]✓ Predicted ({len(bets)} bets, ${cost:.3f})[/green]")
+            success_count += 1
+            total_cost += cost
+
+        except Exception as e:
+            console.print(f"[red]✗ Failed: {str(e)[:60]}[/red]")
+            failed_games.append({
+                "game": f"{away_name} @ {home_name}",
+                "error": str(e)
+            })
+
+    # Display summary
+    console.print()
+    console.print("[bold]═" * 40 + "[/bold]")
+    console.print()
+
+    summary_text = f"[bold cyan]Batch Prediction Summary:[/bold cyan]\n\n"
+    summary_text += f"• Predicted: [green]{success_count}[/green] game(s)\n"
+    summary_text += f"• Skipped: [yellow]{skipped_count}[/yellow] (already done today)\n"
+    summary_text += f"• Failed: [red]{len(failed_games)}[/red] game(s)\n"
+    if success_count > 0:
+        summary_text += f"• Total cost: [cyan]${total_cost:.3f}[/cyan]\n"
+        summary_text += f"• Avg cost per game: [dim]${total_cost/success_count:.3f}[/dim]"
+
+    if success_count > 0:
+        summary_text += f"\n\n[dim]Predictions saved to: nfl/data/predictions/{game_date}/[/dim]"
+
+    console.print(Panel(
+        summary_text,
+        title="[bold green]✅ Batch Prediction Complete[/bold green]" if not failed_games else "[bold yellow]⚠ Batch Prediction Complete (with errors)[/bold yellow]",
+        border_style="green" if not failed_games else "yellow",
+        padding=(1, 2)
+    ))
+
+    # Show failed games if any
+    if failed_games:
+        console.print()
+        console.print("[bold red]Failed Games:[/bold red]")
+        for failed in failed_games:
+            console.print(f"  • {failed['game']}")
+            console.print(f"    [dim]{failed['error'][:100]}[/dim]")

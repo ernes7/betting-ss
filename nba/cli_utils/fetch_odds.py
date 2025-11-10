@@ -12,6 +12,7 @@ from shared.services import MetadataService
 from shared.repositories import OddsRepository
 from shared.utils.console_utils import print_header, print_success, print_cancelled, print_info, print_error
 from shared.utils.web_scraper import WebScraper
+from shared.utils.timezone_utils import get_eastern_now, iso_to_eastern_date_folder
 from shared.config import get_metadata_path
 
 # Import NBA specific
@@ -244,14 +245,13 @@ def save_odds_to_json(odds_data: dict):
         pfr_away_abbr = dk_away_abbr.lower()
         pfr_home_abbr = dk_home_abbr.lower()
 
-    # Parse date from ISO format
+    # Parse date from ISO format and convert to Eastern time
     game_date_str = odds_data.get("game_date", "")
     try:
-        game_date_obj = datetime.fromisoformat(game_date_str.replace("Z", "+00:00"))
-        date_folder = game_date_obj.strftime("%Y-%m-%d")
+        date_folder = iso_to_eastern_date_folder(game_date_str)
     except (ValueError, AttributeError):
-        # Fallback to today's date if parsing fails
-        date_folder = datetime.now().strftime("%Y-%m-%d")
+        # Fallback to today's date in Eastern time if parsing fails
+        date_folder = get_eastern_now().strftime("%Y-%m-%d")
 
     # Check if this game was already scraped today (duplicate prevention)
     game_key = f"{date_folder}_{pfr_home_abbr}_{pfr_away_abbr}"
@@ -261,10 +261,10 @@ def save_odds_to_json(odds_data: dict):
         existing_entry = metadata[game_key]
         fetched_at_str = existing_entry.get("fetched_at", "")
 
-        # Check if fetched today
+        # Check if fetched today (using Eastern time)
         try:
             fetched_at = datetime.fromisoformat(fetched_at_str)
-            today_str = datetime.now().strftime("%Y-%m-%d")
+            today_str = get_eastern_now().strftime("%Y-%m-%d")
             fetched_date_str = fetched_at.strftime("%Y-%m-%d")
 
             if fetched_date_str == today_str:
@@ -300,10 +300,10 @@ def save_odds_to_json(odds_data: dict):
     # Save using repository
     odds_repo.save_odds(date_folder, pfr_away_abbr, pfr_home_abbr, odds_data)
 
-    # Update metadata using service
+    # Update metadata using service (with Eastern time)
     filepath = f"nba/data/odds/{date_folder}/{pfr_home_abbr}_{pfr_away_abbr}.json"
     metadata[game_key] = {
-        "fetched_at": datetime.now().isoformat(),
+        "fetched_at": get_eastern_now().isoformat(),
         "game_date": date_folder,
         "home_team_abbr": pfr_home_abbr,
         "away_team_abbr": pfr_away_abbr,

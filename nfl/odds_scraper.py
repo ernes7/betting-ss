@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from shared.utils.timezone_utils import get_eastern_now
+
 
 class NFLOddsScraper:
     """Extract betting odds from DraftKings HTML files.
@@ -106,7 +108,7 @@ class NFLOddsScraper:
             "sport": "nfl",
             "teams": self._extract_teams(event),
             "game_date": event.get("startEventDate"),
-            "fetched_at": datetime.now().isoformat(),
+            "fetched_at": get_eastern_now().isoformat(),
             "source": "draftkings",
             "game_lines": {},
             "player_props": []

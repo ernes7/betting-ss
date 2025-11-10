@@ -9,6 +9,7 @@ import os
 from datetime import date, datetime, timedelta
 from typing import Dict, Any, Optional
 from shared.config import ensure_parent_directory
+from shared.utils.timezone_utils import get_eastern_now
 
 
 class MetadataService:
@@ -282,7 +283,7 @@ class PredictionsMetadataService(MetadataService):
                 print(f"Warning: Could not load archive file: {str(e)}")
 
         # Calculate cutoff date
-        cutoff_date = (datetime.now() - timedelta(days=days_threshold)).date()
+        cutoff_date = (get_eastern_now() - timedelta(days=days_threshold)).date()
 
         # Find entries to archive
         entries_to_archive = []
