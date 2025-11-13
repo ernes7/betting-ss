@@ -298,82 +298,6 @@ class BaseAnalyzer(ABC):
             else:
                 raise Exception(f"Could not parse JSON from response: {response_text[:200]}")
 
-        # Validate parlay logic: A parlay ONLY hits if ALL legs hit
-        if "parlay_results" in analysis_data:
-            for parlay in analysis_data["parlay_results"]:
-                if "legs" in parlay:
-                    # Validate each individual leg first
-                    for leg in parlay["legs"]:
-                        bet_text = leg.get("bet", "").lower()
-                        actual_value_text = leg.get("actual_value", "").lower()
-                        claimed_hit = leg.get("hit", False)
-
-                        # Basic validation: check if "over" bets with numeric values make sense
-                        if "over" in bet_text and actual_value_text:
-                            # Try to extract the line and actual value
-                            import re
-
-                            # Extract line from bet (e.g., "Over 22.5" -> 22.5)
-                            line_match = re.search(r'over\s+(\d+\.?\d*)', bet_text)
-
-                            # Extract actual value (e.g., "18 completions" -> 18)
-                            actual_match = re.search(r'(\d+\.?\d*)', actual_value_text)
-
-                            if line_match and actual_match:
-                                line = float(line_match.group(1))
-                                actual = float(actual_match.group(1))
-
-                                # For "over" bets: should hit if actual > line
-                                should_hit = actual > line
-
-                                if claimed_hit != should_hit:
-                                    print(f"  [yellow]⚠ Correcting leg '{leg.get('bet')}': Claude said hit={claimed_hit}, but {actual} vs {line} line means hit={should_hit}[/yellow]")
-                                    leg["hit"] = should_hit
-
-                        # Similar check for "under" bets
-                        elif "under" in bet_text and actual_value_text:
-                            import re
-
-                            line_match = re.search(r'under\s+(\d+\.?\d*)', bet_text)
-                            actual_match = re.search(r'(\d+\.?\d*)', actual_value_text)
-
-                            if line_match and actual_match:
-                                line = float(line_match.group(1))
-                                actual = float(actual_match.group(1))
-
-                                # For "under" bets: should hit if actual < line
-                                should_hit = actual < line
-
-                                if claimed_hit != should_hit:
-                                    print(f"  [yellow]⚠ Correcting leg '{leg.get('bet')}': Claude said hit={claimed_hit}, but {actual} vs {line} line means hit={should_hit}[/yellow]")
-                                    leg["hit"] = should_hit
-
-                    # Now count how many legs actually hit (after corrections)
-                    actual_hits = sum(1 for leg in parlay["legs"] if leg.get("hit", False))
-                    total_legs = len(parlay["legs"])
-
-                    # A parlay hits ONLY if ALL legs hit
-                    correct_hit_status = (actual_hits == total_legs)
-
-                    # Fix incorrect parlay status
-                    if parlay.get("hit") != correct_hit_status:
-                        print(f"  [yellow]⚠ Correcting parlay '{parlay.get('parlay_name')}': Claude said hit={parlay.get('hit')}, but {actual_hits}/{total_legs} legs hit[/yellow]")
-                        parlay["hit"] = correct_hit_status
-
-                    # Update legs_hit count
-                    parlay["legs_hit"] = actual_hits
-                    parlay["legs_total"] = total_legs
-                    parlay["hit_rate"] = (actual_hits / total_legs * 100) if total_legs > 0 else 0
-
-            # Recalculate summary statistics
-            if "summary" in analysis_data:
-                total_parlays = len(analysis_data["parlay_results"])
-                parlays_hit = sum(1 for p in analysis_data["parlay_results"] if p.get("hit", False))
-
-                analysis_data["summary"]["parlays_hit"] = parlays_hit
-                analysis_data["summary"]["parlays_total"] = total_parlays
-                analysis_data["summary"]["parlay_hit_rate"] = (parlays_hit / total_parlays * 100) if total_parlays > 0 else 0
-
         return analysis_data
 
     def _save_analysis(self, game_key: str, game_meta: dict, analysis_data: dict):
@@ -400,21 +324,3 @@ class BaseAnalyzer(ABC):
         self.analysis_repo.save_analysis(game_date, team_a_abbr, team_b_abbr, analysis_data)
 
         print(f"    [dim]Analysis saved to {self.config.sport_name}/data/analysis/{game_date}/{team_a_abbr}_{team_b_abbr}.json[/dim]")
-
-    def _get_analysis_path(self, game_key: str, game_meta: dict) -> str:
-        """Build path to analysis JSON file.
-
-        DEPRECATED: This method is kept for backwards compatibility with subclasses.
-        New code should use repositories directly via _save_analysis().
-
-        Args:
-            game_key: Game identifier
-            game_meta: Game metadata
-
-        Returns:
-            Absolute path to analysis file
-        """
-        import os
-        game_date = game_meta.get("game_date")
-        filename = self._extract_filename_from_key(game_key, game_date)
-        return os.path.join(self.config.analysis_dir, game_date, f"{filename}.json")

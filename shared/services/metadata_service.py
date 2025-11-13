@@ -84,7 +84,7 @@ class MetadataService:
         Returns:
             True if item was processed today, False otherwise
         """
-        today = date.today().isoformat()
+        today = get_eastern_now().date().isoformat()
         return self.get_metadata_value(key) == today
 
     def mark_processed_today(self, key: str) -> None:
@@ -93,7 +93,7 @@ class MetadataService:
         Args:
             key: Metadata key to mark
         """
-        today = date.today().isoformat()
+        today = get_eastern_now().date().isoformat()
         self.update_metadata(key, today)
 
     def delete_metadata_key(self, key: str) -> None:
@@ -184,7 +184,7 @@ class PredictionsMetadataService(MetadataService):
             Tuple of (was_predicted, game_key)
         """
         metadata = self.load_predictions_metadata()
-        today = date.today().isoformat()
+        today = get_eastern_now().date().isoformat()
 
         # Generate game key (home team first)
         if home_team_abbr == team_a_abbr:
@@ -225,7 +225,7 @@ class PredictionsMetadataService(MetadataService):
             odds_source: Source of odds if used (e.g., "draftkings")
         """
         metadata = self.load_predictions_metadata()
-        today = date.today().isoformat()
+        today = get_eastern_now().date().isoformat()
 
         metadata[game_key] = {
             "last_predicted": today,

@@ -6,9 +6,6 @@ class NBAPromptComponents:
 
     sport_name = "NBA"
 
-    # Parlay configuration (NBA wants exactly 3 legs, not 3-4 range)
-    parlay_legs = "3"  # Exactly 3 legs per parlay (default is "3-4")
-
     bet_types_list = """  * Player points O/U (e.g., "LeBron James Over 25.5 points")
   * Player rebounds O/U (e.g., "Anthony Davis Over 10.5 rebounds")
   * Player assists O/U (e.g., "Chris Paul Over 8.5 assists")
@@ -36,4 +33,4 @@ class NBAPromptComponents:
 
     stat_tables_to_analyze = "per_game_stats, totals_stats, team_and_opponent, adj_shooting, shooting, injuries"
 
-    important_notes = "IMPORTANT: Before generating parlays, check injuries data to exclude all injured players from prop bets."
+    important_notes = "IMPORTANT: Check injuries data to exclude all injured players from prop bets."

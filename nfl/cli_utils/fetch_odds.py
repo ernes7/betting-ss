@@ -14,9 +14,11 @@ import re
 # Import shared services
 from shared.services import MetadataService
 from shared.repositories import OddsRepository
-from shared.utils.console_utils import print_header, print_success, print_cancelled, print_info, print_error
+from shared.utils.console_utils import print_header, print_success, print_cancelled, print_info, print_error, print_warning
 from shared.utils.web_scraper import WebScraper
 from shared.utils.timezone_utils import get_eastern_now, iso_to_eastern_date_folder, EASTERN_TZ
+from shared.utils.odds_formatting import format_odds, format_spread
+from shared.utils.odds_display import display_odds_summary
 from shared.config import get_metadata_path
 
 # Import NFL specific
@@ -241,8 +243,9 @@ def parse_todays_game_links(html_content: str) -> list[dict]:
 def parse_team_abbrs_from_slug(slug: str) -> tuple[str, str]:
     """Parse team abbreviations from DraftKings game slug.
 
-    Handles special case for LA teams (Chargers/Rams) where DraftKings uses
-    "la-chargers" and "la-rams" in slugs but we need "LAC" and "LAR".
+    Handles special cases for teams that share city abbreviations:
+    - LA teams (Chargers/Rams): "la-chargers" → "LAC", "la-rams" → "LAR"
+    - NY teams (Giants/Jets): "ny-giants" → "NYG", "ny-jets" → "NYJ"
 
     Args:
         slug: Game slug like "atl-falcons-%40-ind-colts"
@@ -277,6 +280,21 @@ def parse_team_abbrs_from_slug(slug: str) -> tuple[str, str]:
             home_abbr = "LAC"
         elif home_parts[1] == "rams":
             home_abbr = "LAR"
+
+    # Special handling for NY teams (Giants and Jets)
+    # DraftKings slugs: "ny-giants" and "ny-jets"
+    # We need: "NYG" and "NYJ"
+    if away_abbr == "NY" and len(away_parts) > 1:
+        if away_parts[1] == "jets":
+            away_abbr = "NYJ"
+        elif away_parts[1] == "giants":
+            away_abbr = "NYG"
+
+    if home_abbr == "NY" and len(home_parts) > 1:
+        if home_parts[1] == "jets":
+            home_abbr = "NYJ"
+        elif home_parts[1] == "giants":
+            home_abbr = "NYG"
 
     return (away_abbr, home_abbr)
 
@@ -662,117 +680,6 @@ def fetch_odds_command():
         ))
 
 
-def display_odds_summary(odds_data: dict):
-    """Display a summary of extracted odds.
-
-    Args:
-        odds_data: Extracted odds dictionary
-    """
-    console.print()
-    console.print("[bold]═" * 40 + "[/bold]")
-
-    # Game info
-    away_team = odds_data["teams"]["away"]
-    home_team = odds_data["teams"]["home"]
-    game_date = odds_data.get("game_date", "Unknown")
-
-    console.print()
-    console.print(Panel.fit(
-        f"[bold cyan]{away_team['name']} @ {home_team['name']}[/bold cyan]\n"
-        f"[dim]{game_date}[/dim]",
-        border_style="cyan"
-    ))
-
-    # Game lines table
-    if odds_data.get("game_lines"):
-        console.print()
-        console.print("[bold]GAME LINES[/bold]")
-
-        table = Table(show_header=True, header_style="bold cyan")
-        table.add_column("Market", style="cyan")
-        table.add_column(away_team["abbr"], justify="right")
-        table.add_column(home_team["abbr"], justify="right")
-
-        game_lines = odds_data["game_lines"]
-
-        # Moneyline
-        if "moneyline" in game_lines:
-            ml = game_lines["moneyline"]
-            table.add_row(
-                "Moneyline",
-                format_odds(ml.get("away")),
-                format_odds(ml.get("home"))
-            )
-
-        # Spread
-        if "spread" in game_lines:
-            spread = game_lines["spread"]
-            away_spread = f"{format_spread(spread.get('away'))} ({format_odds(spread.get('away_odds'))})"
-            home_spread = f"{format_spread(spread.get('home'))} ({format_odds(spread.get('home_odds'))})"
-            table.add_row("Spread", away_spread, home_spread)
-
-        # Total
-        if "total" in game_lines:
-            total = game_lines["total"]
-            line = total.get("line")
-            table.add_row(
-                f"Total ({line})",
-                f"O {format_odds(total.get('over'))}",
-                f"U {format_odds(total.get('under'))}"
-            )
-
-        console.print(table)
-
-    # Player props summary
-    if odds_data.get("player_props"):
-        player_props = odds_data["player_props"]
-        console.print()
-        console.print(f"[bold]PLAYER PROPS[/bold] ([cyan]{len(player_props)} players[/cyan])")
-
-        # Group by team
-        away_players = [p for p in player_props if p.get("team") == "AWAY"]
-        home_players = [p for p in player_props if p.get("team") == "HOME"]
-
-        # Display counts by category
-        prop_types = {}
-        for player in player_props:
-            for prop in player.get("props", []):
-                market = prop.get("market", "unknown")
-                prop_types[market] = prop_types.get(market, 0) + 1
-
-        console.print()
-        console.print("[dim]Markets available:[/dim]")
-        for market, count in sorted(prop_types.items()):
-            market_display = market.replace("_", " ").title()
-            console.print(f"  • {market_display}: {count} player(s)")
-
-        # Show sample players with milestone details
-        console.print()
-        console.print("[dim]Sample players:[/dim]")
-        for player in player_props[:5]:  # Show first 5 players
-            prop_count = len(player.get("props", []))
-            player_display = f"  • {player['player']}: {prop_count} prop(s)"
-
-            # Show milestone ranges for first prop with milestones
-            for prop in player.get("props", []):
-                if "milestones" in prop and prop["milestones"]:
-                    milestones = prop["milestones"]
-                    market_name = prop["market"].replace("_", " ").title()
-                    min_line = milestones[0]["line"]
-                    max_line = milestones[-1]["line"]
-                    milestone_count = len(milestones)
-                    player_display += f" [{market_name}: {milestone_count} lines from {min_line}+ to {max_line}+]"
-                    break
-
-            console.print(player_display)
-
-        if len(player_props) > 5:
-            console.print(f"  [dim]... and {len(player_props) - 5} more[/dim]")
-
-    console.print()
-    console.print("[bold]═" * 40 + "[/bold]")
-
-
 def save_odds_to_json(odds_data: dict):
     """Save odds data to JSON file using repository.
 
@@ -865,39 +772,3 @@ def save_odds_to_json(odds_data: dict):
     console.print()
     print_success(f"Saved to: {filepath}")
     console.print(f"[dim]Format: {{home}}_{{away}} = {pfr_home_abbr}_{pfr_away_abbr}[/dim]")
-
-
-def format_odds(odds: int | None) -> str:
-    """Format odds for display.
-
-    Args:
-        odds: Odds value (e.g., -110, +340)
-
-    Returns:
-        Formatted string (e.g., "-110", "+340")
-    """
-    if odds is None:
-        return "—"
-
-    if odds > 0:
-        return f"+{odds}"
-    else:
-        return str(odds)
-
-
-def format_spread(spread: float | None) -> str:
-    """Format spread for display.
-
-    Args:
-        spread: Spread value (e.g., -7.5, +3.5)
-
-    Returns:
-        Formatted string (e.g., "-7.5", "+3.5")
-    """
-    if spread is None:
-        return "—"
-
-    if spread > 0:
-        return f"+{spread}"
-    else:
-        return str(spread)
