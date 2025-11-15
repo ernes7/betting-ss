@@ -7,7 +7,9 @@ from nfl.constants import (
     PFR_RATE_LIMIT_CALLS,
     PFR_RATE_LIMIT_PERIOD,
     NFL_STATS_URL,
+    NFL_DEFENSIVE_STATS_URL,
     RANKING_TABLES,
+    DEFENSIVE_RANKING_TABLES,
     TEAM_PROFILE_TABLES,
     RESULT_TABLES,
     DATA_RANKINGS_DIR,
@@ -42,6 +44,14 @@ class NFLConfig(SportConfig):
     @property
     def stats_url(self) -> str:
         return NFL_STATS_URL
+
+    @property
+    def defensive_stats_url(self) -> str:
+        return NFL_DEFENSIVE_STATS_URL
+
+    @property
+    def defensive_ranking_tables(self) -> dict[str, str]:
+        return DEFENSIVE_RANKING_TABLES
 
     @property
     def rate_limit_calls(self) -> int:

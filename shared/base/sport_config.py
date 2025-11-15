@@ -52,6 +52,24 @@ class SportConfig(ABC):
         pass
 
     @property
+    def defensive_stats_url(self) -> str | None:
+        """Return the defensive stats URL if sport has separate defensive page.
+
+        Optional property - sports can override to provide defensive stats URL.
+        Default: None (no separate defensive stats page)
+        """
+        return None
+
+    @property
+    def defensive_ranking_tables(self) -> dict[str, str] | None:
+        """Return mapping of defensive table names to HTML table IDs.
+
+        Optional property - sports can override to scrape defensive stats.
+        Default: None (no defensive tables to scrape)
+        """
+        return None
+
+    @property
     @abstractmethod
     def rate_limit_calls(self) -> int:
         """Return number of calls allowed per rate limit period."""

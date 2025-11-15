@@ -60,13 +60,18 @@ class Scraper:
         print(f"Fetching fresh ranking data from {self.config.stats_url}...")
         results = {"success": [], "failed": [], "skipped": False}
 
+        # Calculate total tables to extract (offensive + defensive if available)
+        total_tables = len(self.config.ranking_tables)
+        if self.config.defensive_stats_url and self.config.defensive_ranking_tables:
+            total_tables += len(self.config.defensive_ranking_tables)
+
         with self.web_scraper.launch() as page:
             # Navigate once to the stats page
             self.web_scraper.navigate_and_wait(page, self.config.stats_url)
 
-            # Extract all tables from the same page with progress bar
+            # Extract all offensive tables from the same page with progress bar
             with tqdm(
-                total=len(self.config.ranking_tables),
+                total=total_tables,
                 desc="Extracting tables",
                 unit="table",
             ) as pbar:
@@ -90,6 +95,31 @@ class Scraper:
 
                     pbar.update(1)
 
+                # Extract defensive tables if configured
+                if self.config.defensive_stats_url and self.config.defensive_ranking_tables:
+                    pbar.write(f"\nNavigating to defensive stats: {self.config.defensive_stats_url}")
+                    self.web_scraper.navigate_and_wait(page, self.config.defensive_stats_url)
+
+                    for output_name, table_id in self.config.defensive_ranking_tables.items():
+                        pbar.set_description(f"Extracting {output_name}")
+
+                        table_data = TableExtractor.extract(page, table_id)
+
+                        if table_data:
+                            # Save to JSON
+                            output_path = os.path.join(
+                                self.config.data_rankings_dir, f"{output_name}.json"
+                            )
+                            FileManager.save_json(output_path, table_data)
+
+                            results["success"].append(output_name)
+                            pbar.write(f"  [OK] {output_name}: {len(table_data['data'])} rows")
+                        else:
+                            results["failed"].append(output_name)
+                            pbar.write(f"  [WARN] Table '{table_id}' not found")
+
+                        pbar.update(1)
+
         # Update metadata with today's date
         if results["success"]:
             self.rankings_metadata_mgr.mark_scraped_today()
@@ -99,7 +129,7 @@ class Scraper:
         print("EXTRACTION COMPLETE")
         print(f"{'=' * 70}")
         print(
-            f"Success: {len(results['success'])}/{len(self.config.ranking_tables)} tables"
+            f"Success: {len(results['success'])}/{total_tables} tables"
         )
         if results["failed"]:
             print(f"Failed: {', '.join(results['failed'])}")

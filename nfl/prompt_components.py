@@ -34,8 +34,8 @@ class NFLPromptComponents:
 
     stat_tables_to_analyze = """
   RANKING TABLES (league-wide, 2 teams extracted with rank/percentile):
-    afc_standings, nfc_standings, passing_offense, rushing_offense, scoring_offense,
-  team_offense
+    OFFENSE: afc_standings, nfc_standings, passing_offense, rushing_offense, scoring_offense, team_offense
+    DEFENSE: team_defense, passing_defense, rushing_defense, advanced_defense
 
   TEAM PROFILE TABLES (per team, optimized):
     - Full tables: team_stats, schedule_results, injury_report

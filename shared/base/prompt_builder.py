@@ -20,7 +20,7 @@ class PromptBuilder:
         profile_b: dict | None = None,
         odds: dict = None
     ) -> str:
-        """Build prediction prompt with EV+ analysis and Kelly Criterion stake sizing.
+        """Build prediction prompt with EV+ analysis.
 
         Generates 5 individual bets ranked by Expected Value.
 
@@ -57,7 +57,7 @@ class PromptBuilder:
         if odds:
             data_context += f"\n\nCURRENT BETTING ODDS (DraftKings):\n{json.dumps(odds)}"
 
-        # EV-focused prompt with Kelly Criterion
+        # EV-focused prompt
         prompt = f"""You are an expert {sport_components.sport_name} Expected Value (EV+) betting analyst. Identify the TOP 5 individual bets with highest positive expected value.
 
 MATCHUP: {team_a} @ {team_b} | HOME: {home_team}
@@ -66,7 +66,27 @@ METHODOLOGY:
 1. IMPLIED PROBABILITY: Positive odds: 100/(odds+100), Negative: |odds|/(|odds|+100)
 2. TRUE PROBABILITY: Analyze stats (season avg, last 3 games, matchup) → BE CONSERVATIVE (reduce by 10-15%)
 3. EXPECTED VALUE: EV = (True Prob × Decimal Odds) - 1 | MINIMUM: +3.0% to qualify
-4. KELLY CRITERION: Full Kelly = (TP × DO - 1)/(DO - 1) | Recommend HALF KELLY
+
+CRITICAL DATA USAGE RULES (MUST FOLLOW):
+1. ⛔ NEVER use statistics, rankings, or data that are NOT explicitly provided in the DATA section below
+2. ⛔ NEVER estimate, approximate, or make up any defensive stats (rush yards allowed, pass yards allowed, YPC allowed, rankings, etc.)
+3. ⛔ NEVER reference rankings, percentages, or league positions unless they appear in the provided JSON data
+4. ✅ ONLY use statistics that are directly visible in the RANKING STATS or DETAILED PROFILE sections
+5. ✅ If defensive data is missing for a team, DO NOT mention defensive matchups for that team
+6. ✅ Every statistical claim MUST be traceable to a specific field in the provided JSON data
+7. ✅ When citing stats in reasoning, reference the exact source (e.g., "rushing_offense shows 117.7 rush_yds_per_g")
+
+EXAMPLES OF FORBIDDEN STATEMENTS (DO NOT USE):
+❌ "Patriots allow 4.5 YPC and 155.5 rush yards/game" (if not in provided data)
+❌ "This defense ranks 25th against the run" (if ranking not in provided data)
+❌ "Team X has allowed..." (if defensive stats not provided)
+❌ Any defensive statistics not explicitly in the DATA section
+
+ALLOWED STATEMENTS (ONLY USE THESE):
+✅ "Patriots average 117.7 rushing yards per game (rushing_offense: rush_yds_per_g)"
+✅ "Based on injury_report table, Player X is listed as OUT"
+✅ "According to passing table, QB averages 253.9 yards (pass_yds column)"
+✅ Only cite stats that exist verbatim in the provided JSON
 
 REQUIREMENTS:
 - Exactly 5 bets (NO parlays, duplicates, or replacements)
@@ -87,13 +107,12 @@ OUTPUT FORMAT (ranked by EV, highest first):
 **Implied Probability**: [X.X%]
 **True Probability**: [Y.Y%]
 **Expected Value**: [+Z.Z%]
-**Kelly Criterion**: [K.K%] full Kelly (recommend half: [H.H%] of bankroll)
 
 **Calculation**:
 - Decimal odds: [odds] → [decimal value]
 - EV = ([true_prob] × [decimal]) - 1 = [+EV%]
-- Full Kelly = ([true_prob] × [decimal] - 1) / ([decimal] - 1) = [K.K%]
-- Half Kelly = [H.H%]
+
+**Reasoning**: [Explain why this bet has value using specific stats from the provided data]
 
 [Repeat format for Bets 2-5 with same structure]
 
@@ -102,9 +121,9 @@ OUTPUT FORMAT (ranked by EV, highest first):
 
 CRITICAL RULES:
 - MUST include **Calculation**: section after each bet with explicit math
-- Show all work (decimal conversion, EV formula, Kelly formula)
+- Show all work (decimal conversion, EV formula)
+- MUST include **Reasoning**: section explaining the edge using specific stats
 - Reference specific stats ("averages 78.5 yards last 5 games")
-- Conservative probabilities (account for variance)
-- Never exceed half Kelly recommendation"""
+- Conservative probabilities (account for variance)"""
 
         return prompt

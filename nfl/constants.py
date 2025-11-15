@@ -17,6 +17,7 @@ PFR_RATE_LIMIT_PERIOD = SPORTS_REFERENCE_RATE_LIMIT_PERIOD
 
 # URLs
 NFL_STATS_URL = f"https://www.pro-football-reference.com/years/{CURRENT_YEAR}/"
+NFL_DEFENSIVE_STATS_URL = f"https://www.pro-football-reference.com/years/{CURRENT_YEAR}/opp.htm"
 
 # Ranking tables to extract (table_name: html_table_id)
 # These are aggregate tables with all 32 teams
@@ -27,6 +28,15 @@ RANKING_TABLES = {
     "scoring_offense": "team_scoring",
     "afc_standings": "AFC",
     "nfc_standings": "NFC",
+}
+
+# Defensive ranking tables to extract from opp.htm page
+# Note: Table IDs overlap with offensive tables but are on separate page
+DEFENSIVE_RANKING_TABLES = {
+    "team_defense": "team_stats",
+    "advanced_defense": "advanced_defense",
+    "passing_defense": "passing",
+    "rushing_defense": "rushing",
 }
 
 # Team profile tables to extract
