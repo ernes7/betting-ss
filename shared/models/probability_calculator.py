@@ -228,14 +228,6 @@ class ProbabilityCalculator:
         # Better offense (rank 1) increases production, worse offense (rank 32) decreases
         offense_multiplier = 1.0 + ((16 - team_offense_rank) * 0.015)  # ±1.5% per rank
 
-        # Adjust for injured receivers (WRs/TEs)
-        injured_receivers = stats.get("injured_receivers", [])
-        injury_penalty = len(injured_receivers) * 0.05  # -5% per injured WR/TE
-
-        # Adjust for injured offensive linemen
-        injured_ol = stats.get("injured_ol", [])
-        ol_penalty = len(injured_ol) * 0.03  # -3% per injured OL
-
         # Adjust for opponent pressure rate (from advanced_defense)
         pressure_rate = stats.get("opponent_pressure_rate", 22.5)  # League avg ~22.5%
         # High pressure (35%+) reduces yards, low pressure (15%-) increases yards
@@ -249,7 +241,6 @@ class ProbabilityCalculator:
 
         # Apply all adjustments
         total_multiplier = (defense_multiplier * offense_multiplier *
-                          (1 - injury_penalty) * (1 - ol_penalty) *
                           pressure_multiplier * sack_multiplier)
         adjusted_avg = player_avg * total_multiplier
 
@@ -323,12 +314,6 @@ class ProbabilityCalculator:
         team_offense_rank = stats.get("team_offense_rank", 16)
         offense_multiplier = 1.0 + ((16 - team_offense_rank) * 0.015)
 
-        # Boost for injured teammates (more targets available)
-        injured_receivers = stats.get("injured_receivers", [])
-        # Don't count if this player is injured
-        other_injured = [wr for wr in injured_receivers if wr != player_name]
-        target_boost = len(other_injured) * 0.05  # +5% per other injured WR/TE
-
         # Game script adjustment for RB receiving
         game_script_multiplier = 1.0
         spread_line = stats.get("spread_line", 0)
@@ -350,7 +335,7 @@ class ProbabilityCalculator:
 
         # Apply adjustments
         total_multiplier = (defense_multiplier * offense_multiplier *
-                          (1 + target_boost) * game_script_multiplier)
+                          game_script_multiplier)
         adjusted_avg = player_avg * total_multiplier
 
         # Receiving yards variance (28-33% of mean)

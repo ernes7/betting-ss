@@ -46,7 +46,7 @@ class NFLAnalyzer(BaseAnalyzer):
         Returns:
             Formatted prompt string for Claude AI
         """
-        prompt = f"""You are an expert sports betting analyst specializing in NFL Expected Value (EV+) betting. Your task is to analyze the performance of 5 individual bets by comparing predictions against actual game results and calculating profit/loss.
+        prompt = f"""You are an expert sports betting analyst specializing in NFL Expected Value (EV+) betting. Analyze the performance of individual bets by comparing predictions against actual game results.
 
 **PREDICTION DATA:**
 ```json
@@ -58,49 +58,31 @@ class NFLAnalyzer(BaseAnalyzer):
 {json.dumps(result_data, indent=2)}
 ```
 
-**YOUR ANALYSIS TASK:**
+**YOUR TASK:**
 
-For each of the 5 individual bets, determine if it WON or LOST and calculate the profit/loss.
+For each bet, determine if it WON or LOST and calculate profit/loss. Keep it concise - just check hits, no detailed reasoning per bet.
 
 **BET EVALUATION RULES:**
 
-1. **Player Prop Bets (Over/Under)**
-   - Extract player name, stat type, and line from bet text
-   - Find player's actual stats in the results tables
-   - Compare actual value to the line
-   - Example: "Patrick Mahomes Over 250.5 Passing Yards"
-     - Look for Patrick Mahomes in passing stats table
-     - Check if pass_yds > 250.5
-     - If YES: bet WON
-     - If NO: bet LOST
+1. **Player Props (Over/Under)**
+   - Extract player name, stat type, and line
+   - Find player's actual stats in results tables
+   - Compare actual to line → WIN or LOSS
 
-2. **Common Stat Types and Where to Find Them:**
-   - **Passing yards**: tables.passing → pass_yds column
-   - **Passing TDs**: tables.passing → pass_td column
-   - **Rushing yards**: tables.rushing → rush_yds column
-   - **Rushing TDs**: tables.rushing → rush_td column
-   - **Receiving yards**: tables.receiving → rec_yds column
-   - **Receptions**: tables.receiving → rec column
-   - **Receiving TDs**: tables.receiving → rec_td column
-   - **Rushing + Receiving yards**: Sum rush_yds + rec_yds
+2. **Stat Locations:**
+   - Passing yards/TDs: tables.passing → pass_yds, pass_td
+   - Rushing yards/TDs: tables.rushing → rush_yds, rush_td
+   - Receiving yards/TDs/Receptions: tables.receiving → rec_yds, rec_td, rec
+   - Combined yards: Sum rush_yds + rec_yds
 
-3. **Profit/Loss Calculation:**
-   - Fixed bet amount: ${FIXED_BET_AMOUNT} per bet
-   - **If bet WON:**
-     - Profit = ${FIXED_BET_AMOUNT} × (American Odds / 100)
-     - Example: Odds +150 → Profit = $100 × (150/100) = $150.00
-   - **If bet LOST:**
-     - Profit = -${FIXED_BET_AMOUNT}
-     - Example: Profit = -$100.00
-
-4. **Important Notes:**
-   - All bets use POSITIVE American odds (e.g., +100, +150, +200)
-   - Be thorough in checking all stats tables for player data
-   - Handle player name variations (e.g., "Patrick Mahomes" vs "P. Mahomes")
+3. **Profit/Loss:**
+   - Bet amount: ${FIXED_BET_AMOUNT} per bet
+   - **WON**: Profit = ${FIXED_BET_AMOUNT} × (Odds / 100)
+   - **LOST**: Profit = -${FIXED_BET_AMOUNT}
 
 **OUTPUT FORMAT:**
 
-Return a valid JSON object with this exact structure:
+Return valid JSON (no reasoning per bet, just actual value):
 
 ```json
 {{
@@ -110,28 +92,20 @@ Return a valid JSON object with this exact structure:
       "bet": "Patrick Mahomes Over 250.5 Passing Yards",
       "odds": 150,
       "ev_percent": 8.5,
-      "implied_probability": 40.0,
-      "true_probability": 58.0,
-      "kelly_half": 14.7,
       "won": true,
-      "actual_value": "299 passing yards",
+      "actual_value": "299 pass yards",
       "stake": {FIXED_BET_AMOUNT},
-      "profit": 150.00,
-      "reasoning": "Mahomes completed 25/34 passes for 299 yards, clearing the 250.5 line by 48.5 yards. The Chiefs' passing attack was productive throughout the game."
+      "profit": 150.00
     }},
     {{
       "rank": 2,
       "bet": "Travis Kelce Under 65.5 Receiving Yards",
       "odds": 120,
       "ev_percent": 5.2,
-      "implied_probability": 45.5,
-      "true_probability": 62.0,
-      "kelly_half": 11.8,
       "won": false,
-      "actual_value": "99 receiving yards",
+      "actual_value": "99 rec yards",
       "stake": {FIXED_BET_AMOUNT},
-      "profit": -100.00,
-      "reasoning": "Kelce had 6 receptions for 99 yards, exceeding the 65.5 line by 33.5 yards. He was heavily targeted in the passing game."
+      "profit": -100.00
     }}
   ],
   "summary": {{
@@ -146,10 +120,10 @@ Return a valid JSON object with this exact structure:
     "realized_ev": 3.5
   }},
   "insights": [
-    "3 of 5 bets hit for 60% win rate and +42% ROI",
-    "Passing yard props outperformed (2/2 winners)",
-    "True probability estimates were conservative but accurate",
-    "Recommended Kelly stakes would have yielded optimal returns"
+    "3/5 bets hit (60% win rate, +42% ROI)",
+    "Passing props 2/2, rushing props 1/2, receiving props 0/1",
+    "EV estimates were accurate - predicted +6.2%, realized +3.5%",
+    "True probability calibration was good across bet types"
   ]
 }}
 ```
@@ -170,10 +144,10 @@ Return a valid JSON object with this exact structure:
 2. Ensure all JSON is valid and properly formatted
 3. Be thorough in checking all stats tables for player data
 4. Handle player name variations (e.g., check both full name and abbreviated)
-5. Provide clear, specific reasoning for EACH BET explaining the actual stats
+5. For each bet, only include "actual_value" (e.g., "299 pass yards") - NO detailed reasoning to save tokens
 6. Calculate profit/loss accurately using the formula above
 7. Round profit values to 2 decimal places
-8. Generate 3-5 actionable insights about EV+ prediction performance
+8. Generate 3-5 concise insights about overall prediction performance (not individual bets)
 
 Now analyze the predictions:"""
 

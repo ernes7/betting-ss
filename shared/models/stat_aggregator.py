@@ -350,8 +350,8 @@ class StatAggregator:
         injury_data = injury_report.get("data", [])
 
         for injury in injury_data:
-            status = injury.get("status", "").lower()
-            pos = injury.get("pos", "").upper()
+            status = (injury.get("status") or "").lower()
+            pos = (injury.get("pos") or "").upper()
 
             if ("out" in status or "injured reserve" in status or "ir" in status):
                 if pos in ["WR", "TE"]:
@@ -373,8 +373,8 @@ class StatAggregator:
         injury_data = injury_report.get("data", [])
 
         for injury in injury_data:
-            status = injury.get("status", "").lower()
-            pos = injury.get("pos", "").upper()
+            status = (injury.get("status") or "").lower()
+            pos = (injury.get("pos") or "").upper()
 
             if ("out" in status or "injured reserve" in status or "ir" in status):
                 if pos in ["OL", "T", "G", "C", "OT", "OG"]:

@@ -40,6 +40,23 @@ COLORS = {
     "dock_border": "rgba(134, 165, 217, 0.3)",
 }
 
+# System Color Constants - AI and EV Prediction Systems
+# AI Predictor System (Purple gradient)
+AI_GRADIENT = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+AI_GRADIENT_BG = "linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)"
+AI_COLOR = "#667eea"
+AI_BORDER_COLOR = "#667eea"
+
+# EV Calculator System (Pink gradient)
+EV_GRADIENT = "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"
+EV_GRADIENT_BG = "linear-gradient(135deg, rgba(240, 147, 251, 0.1) 0%, rgba(245, 87, 108, 0.1) 100%)"
+EV_COLOR = "#f093fb"
+EV_BORDER_COLOR = "#f093fb"
+
+# Profit/Loss Colors
+PROFIT_COLOR_POSITIVE = "#38ef7d"  # Green
+PROFIT_COLOR_NEGATIVE = "#f45c43"  # Red
+
 # Typography
 FONTS = {
     # Font families
@@ -392,6 +409,165 @@ def get_custom_css() -> str:
             font-style: italic;
         }}
 
+        /* ===== DUAL SYSTEM CARD STYLES ===== */
+
+        /* Dual Card - Main Container */
+        .dual-card {{
+            background: {COLORS["glass_bg"]};
+            backdrop-filter: blur(10px);
+            border-radius: {SPACING["border_radius_small"]};
+            border: 1px solid {COLORS["glass_border"]};
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            margin: 0 8px 16px 8px;
+            transition: all 0.3s ease;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }}
+
+        .dual-card:hover {{
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(134, 165, 217, 0.3);
+            border-color: {COLORS["secondary"]};
+        }}
+
+        .dual-card-analyzed {{
+            border-left: 3px solid {COLORS["primary"]};
+        }}
+
+        .dual-card-analyzed-both {{
+            border-left: 3px solid {COLORS["success"]};
+        }}
+
+        .dual-card-pending {{
+            border-left: 3px solid {COLORS["glass_border_strong"]};
+            opacity: 0.8;
+        }}
+
+        /* Dual Card Header */
+        .dual-card-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 8px;
+            border-bottom: 1px solid {COLORS["glass_border"]};
+        }}
+
+        .header-label {{
+            font-size: 0.75rem;
+            color: {COLORS["text_muted"]};
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }}
+
+        /* Dual Systems Container (Side-by-Side Layout) */
+        .dual-systems {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 8px;
+        }}
+
+        /* Single System Container */
+        .single-system {{
+            margin-top: 8px;
+        }}
+
+        /* Individual System Section */
+        .system-section {{
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }}
+
+        .system-section-empty {{
+            background: rgba(0, 0, 0, 0.1);
+            border: 1px dashed rgba(255, 255, 255, 0.1);
+            opacity: 0.6;
+        }}
+
+        .system-empty {{
+            text-align: center;
+            color: {COLORS["text_muted"]};
+            font-size: 0.8rem;
+            padding: 20px 0;
+            font-style: italic;
+        }}
+
+        .system-badge-empty {{
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-align: center;
+        }}
+
+        /* System Header (Badge + Profit) */
+        .system-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }}
+
+        /* System Badge */
+        .system-badge {{
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }}
+
+        /* System Profit */
+        .system-profit {{
+            font-size: 1.1rem;
+            font-weight: 700;
+        }}
+
+        /* System Stats (Mini Stats Grid) */
+        .system-stats {{
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            padding: 8px 0;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }}
+
+        .stat-mini {{
+            text-align: center;
+        }}
+
+        .stat-mini-label {{
+            font-size: 0.65rem;
+            color: {COLORS["text_muted"]};
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 2px;
+        }}
+
+        .stat-mini-value {{
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: {COLORS["text_primary"]};
+        }}
+
+        /* System Bets List */
+        .system-bets {{
+            margin-top: 6px;
+            font-size: 0.7rem;
+        }}
+
         /* Hide Streamlit branding */
         #MainMenu {{visibility: hidden;}}
         footer {{visibility: hidden;}}
@@ -418,6 +594,258 @@ def get_custom_css() -> str:
             background: {COLORS["glass_bg"]};
             color: {COLORS["text_primary"]};
             border: 1px solid {COLORS["glass_border"]};
+        }}
+
+        /* ===== ENHANCED PREDICTION CARD STYLES ===== */
+
+        /* Analyzed vs Pending Card States */
+        .prediction-card-analyzed {{
+            border-left: 4px solid {COLORS["success"]} !important;
+        }}
+
+        .prediction-card-pending {{
+            border-left: 4px solid {COLORS["glass_border_strong"]} !important;
+            opacity: 0.9;
+        }}
+
+        /* Enhanced Card Header */
+        .card-header-enhanced {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 12px;
+            margin-bottom: 12px;
+            border-bottom: 2px solid {COLORS["glass_border"]};
+        }}
+
+        .card-matchup-main {{
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: {COLORS["text_primary"]};
+            flex: 1;
+            text-align: center;
+        }}
+
+        .final-score {{
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: {COLORS["secondary"]};
+            padding: 4px 10px;
+            background: rgba(134, 165, 217, 0.15);
+            border-radius: 8px;
+        }}
+
+        .pending-badge {{
+            font-size: 0.75rem;
+            color: {COLORS["text_muted"]};
+            padding: 4px 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }}
+
+        /* Profit Bar - Summary Metrics */
+        .profit-bar {{
+            display: flex;
+            justify-content: space-around;
+            gap: 15px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 10px;
+            margin-bottom: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }}
+
+        .profit-item {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }}
+
+        .profit-label {{
+            font-size: 0.7rem;
+            color: {COLORS["text_muted"]};
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }}
+
+        .profit-value {{
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: {COLORS["text_primary"]};
+        }}
+
+        /* Predictions Container - Stacked AI + EV */
+        .predictions-container {{
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 12px;
+        }}
+
+        /* Individual Prediction Section (AI or EV) */
+        .prediction-section {{
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+            padding: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }}
+
+        /* Section Header (Badge + Stats) */
+        .section-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }}
+
+        .section-stats {{
+            display: flex;
+            gap: 12px;
+            font-size: 0.75rem;
+            color: {COLORS["text_muted"]};
+        }}
+
+        .section-stats span {{
+            padding: 4px 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+        }}
+
+        .section-label {{
+            font-size: 0.8rem;
+            font-style: italic;
+        }}
+
+        /* Bet List */
+        .bet-list {{
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }}
+
+        /* Individual Bet Row */
+        .bet-row {{
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            gap: 10px;
+            transition: all 0.2s ease;
+        }}
+
+        .bet-row:hover {{
+            background: rgba(0, 0, 0, 0.25);
+            border-color: rgba(255, 255, 255, 0.1);
+            transform: translateX(3px);
+        }}
+
+        .bet-desc {{
+            flex: 1;
+            font-size: 0.8rem;
+            color: {COLORS["text_primary"]};
+            line-height: 1.4;
+        }}
+
+        .bet-stats {{
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 3px;
+            min-width: 80px;
+        }}
+
+        .bet-odds {{
+            font-size: 0.75rem;
+            color: {COLORS["text_secondary"]};
+            font-weight: 600;
+            padding: 2px 6px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }}
+
+        .bet-ev {{
+            font-size: 0.7rem;
+            color: {COLORS["success"]};
+            font-weight: 700;
+        }}
+
+        /* Bet Outcome Icons */
+        .bet-won-icon {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            background: {COLORS["success"]};
+            color: white;
+            border-radius: 50%;
+            font-size: 0.75rem;
+            font-weight: 700;
+            flex-shrink: 0;
+            margin-right: 8px;
+        }}
+
+        .bet-lost-icon {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            background: {COLORS["danger"]};
+            color: white;
+            border-radius: 50%;
+            font-size: 0.75rem;
+            font-weight: 700;
+            flex-shrink: 0;
+            margin-right: 8px;
+        }}
+
+        .bet-pending-icon {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            background: {COLORS["glass_border_strong"]};
+            color: {COLORS["text_muted"]};
+            border-radius: 50%;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+            margin-right: 8px;
+        }}
+
+        /* Analyzed Bet Row */
+        .bet-row-analyzed {{
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            gap: 10px;
+        }}
+
+        .bet-outcome {{
+            display: flex;
+            align-items: center;
+            min-width: 70px;
+            justify-content: flex-end;
+        }}
+
+        .bet-stats-inline {{
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            min-width: 100px;
+            justify-content: flex-end;
         }}
     </style>
     """

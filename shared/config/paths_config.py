@@ -39,8 +39,18 @@ PATH_TEMPLATES = {
 
 # File naming templates
 FILE_TEMPLATES = {
+    # Original templates (backward compatibility)
     "prediction": "{team_a_abbr}_{team_b_abbr}.md",
     "prediction_json": "{team_a_abbr}_{team_b_abbr}.json",
+
+    # Dual system templates with suffixes
+    "prediction_ai": "{team_a_abbr}_{team_b_abbr}_ai.md",
+    "prediction_ai_json": "{team_a_abbr}_{team_b_abbr}_ai.json",
+    "prediction_ev": "{team_a_abbr}_{team_b_abbr}_ev.md",
+    "prediction_ev_json": "{team_a_abbr}_{team_b_abbr}_ev.json",
+    "prediction_comparison_json": "{team_a_abbr}_{team_b_abbr}_comparison.json",
+
+    # Other templates
     "result": "{away_abbr}_at_{home_abbr}.json",
     "odds": "{away_abbr}_at_{home_abbr}.json",
     "analysis": "{team_a_abbr}_{team_b_abbr}.json",

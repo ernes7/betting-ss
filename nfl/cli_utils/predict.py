@@ -15,6 +15,7 @@ from shared.services import (
     ProfileService,
     OddsService
 )
+from shared.services.batch_prediction_service import BatchPredictionService
 from shared.repositories import PredictionRepository, OddsRepository
 from shared.utils.console_utils import (
     print_header,
@@ -467,6 +468,86 @@ def predict_game():
         filename = f"{home_abbr}_{away_abbr}.md"
         print_success(f"Saved to nfl/data/predictions/{game_date}/{filename}")
 
+        # Offer to run EV Calculator
+        console.print()
+        console.print("[cyan]━" * 40 + "[/cyan]")
+        console.print()
+        ev_questions = [
+            inquirer.Confirm(
+                "run_ev",
+                message="Run EV Calculator too? (Statistical model, fast & free)",
+                default=True
+            )
+        ]
+        ev_answers = inquirer.prompt(ev_questions)
+
+        if ev_answers and ev_answers["run_ev"]:
+            console.print()
+            print_info("🧮 Running EV Calculator...")
+
+            try:
+                from shared.models.ev_calculator import EVCalculator
+                from shared.repositories.ev_results_repository import EVResultsRepository
+                from shared.services.comparison_service import ComparisonService
+                from shared.repositories.comparison_repository import ComparisonRepository
+
+                # Initialize repositories
+                ev_repo = EVResultsRepository("nfl")
+                comparison_repo = ComparisonRepository("nfl")
+                comparison_service = ComparisonService()
+
+                # Run EV Calculator
+                ev_calculator = EVCalculator(
+                    odds_data=odds_data,
+                    sport_config=nfl_sport.config,
+                    base_dir=".",
+                    conservative_adjustment=0.85
+                )
+
+                top_ev_bets = ev_calculator.get_top_n(n=5, min_ev_threshold=3.0)
+                all_bets = ev_calculator.calculate_all_ev(min_ev_threshold=0.0)
+
+                # Format and save EV results
+                ev_results = ev_repo.format_ev_results_for_save(
+                    ev_calculator_output=top_ev_bets,
+                    teams=[team_a, team_b],
+                    home_team=home_team,
+                    game_date=game_date,
+                    total_bets_analyzed=len(all_bets),
+                    conservative_adjustment=0.85
+                )
+
+                ev_repo.save_ev_results(game_date, home_pfr, away_pfr, ev_results, "json")
+                ev_markdown = ev_repo.format_ev_results_to_markdown(ev_results)
+                ev_repo.save_ev_results(game_date, home_pfr, away_pfr, ev_markdown, "md")
+
+                print_success(f"✅ EV results saved: {home_pfr}_{away_pfr}_ev.json")
+
+                # Generate comparison
+                ai_data = result.get("prediction_data", {})
+                comparison = comparison_service.compare_predictions(ev_results, ai_data)
+                comparison_repo.save_comparison(game_date, home_pfr, away_pfr, comparison)
+
+                print_success(f"✅ Comparison saved: {home_pfr}_{away_pfr}_comparison.json")
+
+                # Display agreement
+                agreement_rate = comparison.get("agreement_rate", 0)
+                consensus = len(comparison.get("overlapping_bets", []))
+
+                console.print()
+                console.print(Panel.fit(
+                    f"[bold cyan]Comparison Results[/bold cyan]\n\n"
+                    f"Agreement rate: {agreement_rate:.1%}\n"
+                    f"Consensus picks: {consensus}/5 bets\n"
+                    f"EV-only picks: {len(comparison.get('ev_only_bets', []))}\n"
+                    f"AI-only picks: {len(comparison.get('ai_only_bets', []))}",
+                    title="📊 Systems Comparison",
+                    border_style="green"
+                ))
+
+            except Exception as ev_error:
+                print_error(f"EV Calculator failed: {str(ev_error)}")
+
     except Exception as e:
         console.print()
         console.print(Panel(
@@ -724,3 +805,77 @@ def predict_all_games():
         for failed in failed_games:
             console.print(f"  • {failed['game']}")
             console.print(f"    [dim]{failed['error'][:100]}[/dim]")
+
+
+def predict_all_games_dual():
+    """Run BOTH EV Calculator and AI Predictor for all games on a date."""
+    print_header("Dual Prediction System (EV + AI)")
+    
+    console.print(Panel.fit(
+        "[bold cyan]Run BOTH prediction systems for all games[/bold cyan]\n\n"
+        "[white]This will run:[/white]\n"
+        "  • [yellow]EV Calculator[/yellow] - Statistical model (fast, free)\n"
+        "  • [cyan]AI Predictor[/cyan] - Claude analysis (~$0.15/game)\n"
+        "  • [green]Comparison[/green] - Agreement analysis\n\n"
+        "[dim]Results saved with _ev, _ai, and _comparison suffixes[/dim]",
+        title="ℹ️  Info",
+        border_style="cyan"
+    ))
+    
+    # Date selection
+    questions = [
+        inquirer.Text(
+            "game_date",
+            message="Game date (YYYY-MM-DD)",
+            validate=is_valid_inquirer_date
+        )
+    ]
+    answers = inquirer.prompt(questions)
+    if not answers:
+        print_warning("Cancelled")
+        return
+    
+    game_date = answers["game_date"]
+    
+    # Confirm cost
+    console.print(f"\n[yellow]⚠️  Cost Estimate:[/yellow]")
+    console.print(f"  - EV Calculator: [green]FREE[/green]")
+    console.print(f"  - AI Predictor: [yellow]~$0.15 per game[/yellow]")
+    console.print(f"  - Estimated total: [yellow]depends on # of games[/yellow]\n")
+    
+    questions = [
+        inquirer.Confirm(
+            "confirm",
+            message="Continue with dual predictions?",
+            default=True
+        )
+    ]
+    answers = inquirer.prompt(questions)
+    if not answers or not answers["confirm"]:
+        print_warning("Cancelled")
+        return
+    
+    # Initialize batch service
+    console.print(f"\n[cyan]Initializing batch prediction service...[/cyan]")
+    batch_service = BatchPredictionService("nfl", nfl_sport.config)
+    
+    # Run dual predictions
+    try:
+        results = batch_service.run_dual_predictions(
+            game_date=game_date,
+            base_dir=".",
+            conservative_adjustment=0.85,
+            min_ev_threshold=3.0,
+            skip_existing=True
+        )
+        
+        if not results.get("success"):
+            print_error(f"Batch processing failed: {results.get('error', 'Unknown error')}")
+            return
+        
+        # Success message is already printed by the service
+        
+    except Exception as e:
+        print_error(f"Error running dual predictions: {str(e)}")
+        import traceback
+        traceback.print_exc()

@@ -292,23 +292,65 @@ def fetch_results():
                 console.print("  ├─ Analyzing with Claude AI...", style="dim")
 
                 try:
-                    analysis_data = analyzer.generate_analysis(game_key, game_meta)
-                    anthropic_api_called = True
+                    # Check which prediction types exist
+                    prediction_types = analyzer.check_prediction_types(game_key, game_meta)
+                    has_ai = prediction_types.get("has_ai", False)
+                    has_ev = prediction_types.get("has_ev", False)
+
+                    # Run appropriate analysis based on what exists
+                    if has_ai and has_ev:
+                        console.print("  ├─ [cyan]Both AI & EV predictions found - analyzing both systems[/cyan]", style="dim")
+                        analysis_data = analyzer.generate_dual_analysis(game_key, game_meta)
+                        anthropic_api_called = True
+
+                        # Display P/L summary for both systems
+                        ai_summary = analysis_data.get('ai_system', {}).get('summary', {})
+                        ev_summary = analysis_data.get('ev_system', {}).get('summary', {})
+
+                        console.print(f"  ├─ [green]✓ Dual analysis complete[/green]", style="dim")
+                        console.print(f"  ├─ [cyan]AI System:[/cyan] ${ai_summary.get('total_profit', 0):+.2f} | "
+                                    f"{ai_summary.get('bets_won', 0)}/{ai_summary.get('total_bets', 5)} wins "
+                                    f"({ai_summary.get('win_rate', 0):.1f}%)")
+                        console.print(f"  └─ [cyan]EV System:[/cyan] ${ev_summary.get('total_profit', 0):+.2f} | "
+                                    f"{ev_summary.get('bets_won', 0)}/{ev_summary.get('total_bets', 5)} wins "
+                                    f"({ev_summary.get('win_rate', 0):.1f}%)")
+
+                    elif has_ai:
+                        console.print("  ├─ [cyan]AI prediction found - analyzing AI system[/cyan]", style="dim")
+                        analysis_data = analyzer.generate_analysis(game_key, game_meta)
+                        anthropic_api_called = True
+
+                        # Display P/L summary
+                        summary = analysis_data.get('summary', {})
+                        total_profit = summary.get('total_profit', 0)
+                        win_rate = summary.get('win_rate', 0)
+                        bets_won = summary.get('bets_won', 0)
+                        total_bets = summary.get('total_bets', 5)
+
+                        console.print(f"  ├─ [green]✓ Analysis complete[/green]", style="dim")
+                        console.print(f"  └─ [green]✓ P/L: ${total_profit:+.2f} | {bets_won}/{total_bets} wins ({win_rate:.1f}%)[/green]")
+
+                    elif has_ev:
+                        console.print("  ├─ [cyan]EV prediction found - analyzing EV system[/cyan]", style="dim")
+                        analysis_data = analyzer.generate_dual_analysis(game_key, game_meta)
+                        anthropic_api_called = True
+
+                        # Display P/L summary
+                        ev_summary = analysis_data.get('ev_system', {}).get('summary', {})
+                        console.print(f"  ├─ [green]✓ Analysis complete[/green]", style="dim")
+                        console.print(f"  └─ [green]✓ P/L: ${ev_summary.get('total_profit', 0):+.2f} | "
+                                    f"{ev_summary.get('bets_won', 0)}/{ev_summary.get('total_bets', 5)} wins "
+                                    f"({ev_summary.get('win_rate', 0):.1f}%)[/green]")
+
+                    else:
+                        console.print("  └─ [yellow]⚠ No predictions found (neither AI nor EV)[/yellow]")
+                        failed_count += 1
+                        continue
 
                     # Update metadata using service
                     metadata[game_key]["analysis_generated"] = True
                     metadata[game_key]["analysis_generated_at"] = get_eastern_now().strftime("%Y-%m-%d %H:%M:%S")
                     predictions_metadata_service.save_metadata(metadata)
-
-                    # Display P/L summary
-                    summary = analysis_data.get('summary', {})
-                    total_profit = summary.get('total_profit', 0)
-                    win_rate = summary.get('win_rate', 0)
-                    bets_won = summary.get('bets_won', 0)
-                    total_bets = summary.get('total_bets', 5)
-
-                    console.print(f"  ├─ [green]✓ Analysis complete[/green]", style="dim")
-                    console.print(f"  └─ [green]✓ P/L: ${total_profit:+.2f} | {bets_won}/{total_bets} wins ({win_rate:.1f}%)[/green]")
                     success_count += 1
 
                 except Exception as analysis_error:

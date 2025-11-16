@@ -72,25 +72,35 @@ class BetParser:
         if "spread" in game_lines:
             spread = game_lines["spread"]
             if "away" in spread and "away_odds" in spread and BetParser.is_valid_odds_range(spread["away_odds"]):
+                # Auto-adjust small spreads to field goal margin
+                away_line = spread["away"]
+                if abs(away_line) in [1.5, 2.5]:
+                    away_line = 3.5 if away_line > 0 else -3.5
+
                 bets.append({
                     "bet_type": "spread",
                     "team": away_team,
                     "team_abbr": away_abbr,
                     "side": "away",
-                    "line": spread["away"],
-                    "description": f"{away_team} {spread['away']:+.1f}",
+                    "line": away_line,
+                    "description": f"{away_team} {away_line:+.1f}",
                     "odds": spread["away_odds"],
                     "decimal_odds": BetParser.american_to_decimal(spread["away_odds"]),
                     "implied_prob": BetParser.calculate_implied_probability(spread["away_odds"])
                 })
             if "home" in spread and "home_odds" in spread and BetParser.is_valid_odds_range(spread["home_odds"]):
+                # Auto-adjust small spreads to field goal margin
+                home_line = spread["home"]
+                if abs(home_line) in [1.5, 2.5]:
+                    home_line = 3.5 if home_line > 0 else -3.5
+
                 bets.append({
                     "bet_type": "spread",
                     "team": home_team,
                     "team_abbr": home_abbr,
                     "side": "home",
-                    "line": spread["home"],
-                    "description": f"{home_team} {spread['home']:+.1f}",
+                    "line": home_line,
+                    "description": f"{home_team} {home_line:+.1f}",
                     "odds": spread["home_odds"],
                     "decimal_odds": BetParser.american_to_decimal(spread["home_odds"]),
                     "implied_prob": BetParser.calculate_implied_probability(spread["home_odds"])
@@ -134,7 +144,7 @@ class BetParser:
 
         for player_data in player_props:
             player = player_data.get("player", "Unknown Player")
-            team = player_data.get("team", "").upper()
+            team = (player_data.get("team") or "").upper()
             position = player_data.get("position")
 
             props = player_data.get("props", [])

@@ -27,7 +27,8 @@ class PredictionRepository(BaseRepository):
         team_a_abbr: str,
         team_b_abbr: str,
         prediction_data: dict,
-        file_format: str = "json"
+        file_format: str = "json",
+        use_ai_suffix: bool = True
     ) -> bool:
         """Save prediction data.
 
@@ -37,11 +38,18 @@ class PredictionRepository(BaseRepository):
             team_b_abbr: Second team abbreviation (lowercase)
             prediction_data: Prediction data dictionary
             file_format: File format ('json' or 'md')
+            use_ai_suffix: If True, use _ai suffix (new dual system format).
+                          If False, use original format (backward compatibility)
 
         Returns:
             True if successful, False otherwise
         """
-        file_type = "prediction_json" if file_format == "json" else "prediction"
+        # Determine file type based on suffix preference
+        if use_ai_suffix:
+            file_type = "prediction_ai_json" if file_format == "json" else "prediction_ai"
+        else:
+            file_type = "prediction_json" if file_format == "json" else "prediction"
+
         filepath = get_file_path(
             self.sport_code,
             self.prediction_type,
@@ -70,7 +78,9 @@ class PredictionRepository(BaseRepository):
         team_a_abbr: str,
         team_b_abbr: str
     ) -> Optional[dict]:
-        """Load prediction data.
+        """Load prediction data with backward compatibility.
+
+        Tries to load with _ai suffix first, falls back to original format.
 
         Args:
             game_date: Game date in YYYY-MM-DD format
@@ -80,7 +90,22 @@ class PredictionRepository(BaseRepository):
         Returns:
             Prediction data dictionary or None
         """
-        filepath = get_file_path(
+        # Try _ai suffix first (new format)
+        filepath_ai = get_file_path(
+            self.sport_code,
+            self.prediction_type,
+            "prediction_ai_json",
+            game_date=game_date,
+            team_a_abbr=team_a_abbr,
+            team_b_abbr=team_b_abbr
+        )
+
+        data = self.load(filepath_ai)
+        if data:
+            return data
+
+        # Fall back to original format (backward compatibility)
+        filepath_original = get_file_path(
             self.sport_code,
             self.prediction_type,
             "prediction_json",
@@ -88,13 +113,15 @@ class PredictionRepository(BaseRepository):
             team_a_abbr=team_a_abbr,
             team_b_abbr=team_b_abbr
         )
-        return self.load(filepath)
+        return self.load(filepath_original)
 
-    def list_predictions_for_date(self, game_date: str) -> List[dict]:
+    def list_predictions_for_date(self, game_date: str, ai_only: bool = False) -> List[dict]:
         """List all predictions for a specific date.
 
         Args:
             game_date: Game date in YYYY-MM-DD format
+            ai_only: If True, only load files with _ai suffix.
+                    If False, load both _ai and original format files.
 
         Returns:
             List of prediction data dictionaries
@@ -109,7 +136,20 @@ class PredictionRepository(BaseRepository):
             return []
 
         predictions = []
-        for filepath in self.list_all_files(predictions_dir):
+        for filename in os.listdir(predictions_dir):
+            # Filter based on ai_only parameter
+            if ai_only:
+                # Only load _ai.json files
+                if not filename.endswith("_ai.json"):
+                    continue
+            else:
+                # Load both _ai.json and original .json files (but not _ev.json or _comparison.json)
+                if filename.endswith("_ev.json") or filename.endswith("_comparison.json") or filename.endswith("_analysis.json"):
+                    continue
+                if not filename.endswith(".json"):
+                    continue
+
+            filepath = os.path.join(predictions_dir, filename)
             prediction_data = self.load(filepath)
             if prediction_data:
                 predictions.append(prediction_data)

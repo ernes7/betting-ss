@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 import time
 import random
 import re
+from collections import defaultdict
 
 # Import shared services
 from shared.services import MetadataService
@@ -517,19 +518,21 @@ def fetch_odds_command():
         upcoming_games = [
             g for g in games
             if not g.get('has_started', False)
-            and g.get('start_time_str', '').startswith('Today')
+            and (g.get('start_time_str', '').startswith('Today')
+                 or g.get('start_time_str', '').startswith('Tomorrow'))
         ]
         future_games = [
             g for g in games
             if not g.get('has_started', False)
             and not g.get('start_time_str', '').startswith('Today')
+            and not g.get('start_time_str', '').startswith('Tomorrow')
         ]
 
         print_success(f"Found {len(games)} game(s) total")
         if started_games or future_games:
             status_parts = []
             if upcoming_games:
-                status_parts.append(f"{len(upcoming_games)} today")
+                status_parts.append(f"{len(upcoming_games)} today/tomorrow")
             if started_games:
                 status_parts.append(f"{len(started_games)} started (skipped)")
             if future_games:
@@ -544,9 +547,9 @@ def fetch_odds_command():
                          "[dim]Cannot fetch odds for games in progress.[/dim]\n" \
                          "Try running this command before games start."
             elif future_games and not started_games:
-                reason = "[yellow]No games scheduled for today![/yellow]\n\n" \
+                reason = "[yellow]No games scheduled for today or tomorrow![/yellow]\n\n" \
                          f"[dim]Found {len(future_games)} game(s) scheduled for future dates.[/dim]\n" \
-                         "Run this command again on the game day."
+                         "Run this command again closer to the game day."
             else:
                 reason = "[yellow]No games available to fetch![/yellow]\n\n" \
                          f"[dim]• {len(started_games)} game(s) already started[/dim]\n" \
@@ -554,7 +557,7 @@ def fetch_odds_command():
 
             console.print(Panel(
                 reason,
-                title="[bold yellow]No Upcoming Games Today[/bold yellow]",
+                title="[bold yellow]No Upcoming Games (Today/Tomorrow)[/bold yellow]",
                 border_style="yellow",
                 padding=(1, 2)
             ))
@@ -651,15 +654,26 @@ def fetch_odds_command():
         if upcoming_games or started_games:
             try:
                 console.print()
-                print_info("📅 Generating schedule file for batch predictions...")
+                print_info("📅 Generating schedule files for batch predictions...")
 
                 all_games = upcoming_games + started_games
-                today_str = get_eastern_now().strftime("%Y-%m-%d")
 
-                generate_schedule_file(all_games, today_str, fetched_tracking)
+                # Group games by their actual game date
+                games_by_date = defaultdict(list)
+                for game in all_games:
+                    if game.get('start_time'):
+                        game_date = game['start_time'].strftime("%Y-%m-%d")
+                        games_by_date[game_date].append(game)
+                    else:
+                        # Fallback to today if no start_time
+                        today_str = get_eastern_now().strftime("%Y-%m-%d")
+                        games_by_date[today_str].append(game)
 
-                print_success(f"Schedule saved: nfl/data/odds/{today_str}/schedule.json")
-                console.print(f"[dim]  • {len(upcoming_games)} upcoming game(s) ready for batch prediction[/dim]")
+                # Generate one schedule.json per date
+                for game_date, date_games in games_by_date.items():
+                    generate_schedule_file(date_games, game_date, fetched_tracking)
+                    print_success(f"Schedule saved: nfl/data/odds/{game_date}/schedule.json")
+                    console.print(f"[dim]  • {len(date_games)} game(s) on {game_date}[/dim]")
             except Exception as e:
                 print_warning(f"Could not generate schedule: {str(e)}")
 

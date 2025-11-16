@@ -108,22 +108,14 @@ OUTPUT FORMAT (ranked by EV, highest first):
 **True Probability**: [Y.Y%]
 **Expected Value**: [+Z.Z%]
 
-**Calculation**:
-- Decimal odds: [odds] → [decimal value]
-- EV = ([true_prob] × [decimal]) - 1 = [+EV%]
-
-**Reasoning**: [Explain why this bet has value using specific stats from the provided data]
-
 [Repeat format for Bets 2-5 with same structure]
 
 ## GAME ANALYSIS & REASONING
-[Exactly 50 words: Key matchup dynamics, why these 5 bets have edge, common factors across selections]
+[Exactly 50 words: Key matchup dynamics, why these 5 bets have edge, common factors across selections. Reference specific stats from the provided data to explain the betting edge.]
 
 CRITICAL RULES:
-- MUST include **Calculation**: section after each bet with explicit math
-- Show all work (decimal conversion, EV formula)
-- MUST include **Reasoning**: section explaining the edge using specific stats
-- Reference specific stats ("averages 78.5 yards last 5 games")
-- Conservative probabilities (account for variance)"""
+- Conservative probabilities (account for variance)
+- Reference specific stats when available ("averages 78.5 yards last 5 games")
+- Focus analysis in GAME ANALYSIS section, not per-bet"""
 
         return prompt

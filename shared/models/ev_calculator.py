@@ -5,6 +5,7 @@ from shared.models.bet_parser import BetParser
 from shared.models.stat_aggregator import StatAggregator
 from shared.models.probability_calculator import ProbabilityCalculator
 from shared.models.bet_validator import BetValidator
+from nfl.teams import PFR_ABBR_TO_NAME
 
 
 class EVCalculator:
@@ -34,10 +35,14 @@ class EVCalculator:
         self.stat_aggregator = StatAggregator(sport_config, base_dir)
         self.prob_calculator = ProbabilityCalculator()
 
-        # Extract team info
+        # Extract team info using PFR abbreviations
         teams = odds_data.get("teams", {})
-        self.away_team = teams.get("away", {}).get("name", "")
-        self.home_team = teams.get("home", {}).get("name", "")
+        away_pfr = teams.get("away", {}).get("pfr_abbr", "")
+        home_pfr = teams.get("home", {}).get("pfr_abbr", "")
+
+        # Convert PFR abbreviations to full names for profile lookup
+        self.away_team = PFR_ABBR_TO_NAME.get(away_pfr, teams.get("away", {}).get("name", ""))
+        self.home_team = PFR_ABBR_TO_NAME.get(home_pfr, teams.get("home", {}).get("name", ""))
 
         # Load team data
         self.away_profile = self.stat_aggregator.load_team_profile(self.away_team)
@@ -183,7 +188,7 @@ class EVCalculator:
         elif bet_type == "player_prop":
             # Player prop needs player stats
             player_name = bet.get("player", "")
-            team_abbr = bet.get("team", "").upper()
+            team_abbr = (bet.get("team") or "").upper()
             market = bet.get("market", "")
 
             # Determine which team the player is on
@@ -212,15 +217,6 @@ class EVCalculator:
                 stats["player_stats"] = player_stats  # Store for validator
                 stats["spread_line"] = spread_line  # Game script context
 
-                # Check injury status
-                injury_report = player_profile.get("injury_report", {})
-                injury_status = self.stat_aggregator.check_injury_status(player_name, injury_report)
-                stats["injury_status"] = injury_status
-
-                # If player is injured, return 0 probability
-                if injury_status in ["out", "injured_reserve"]:
-                    stats["player_averages"] = {k: 0 for k in stats["player_averages"]}
-
                 # Get opponent defense rank for relevant market
                 defense_category = self._map_market_to_defense(market)
                 if defense_category:
@@ -239,19 +235,11 @@ class EVCalculator:
                         offense_category
                     ) or 16  # Default to middle rank
 
-                # Add injury context for QB props (passing yards, TDs)
+                # Add advanced defense stats for QB props (passing yards, TDs)
                 if market in ["passing_yards", "passing_tds", "pass_completions", "pass_attempts"]:
-                    stats["injured_receivers"] = self.stat_aggregator.get_injured_receivers(player_profile)
-                    stats["injured_ol"] = self.stat_aggregator.get_injured_ol(player_profile)
-
-                    # Add advanced defense stats for QB props
                     stats["opponent_pressure_rate"] = self.stat_aggregator.get_defense_pressure_rate(opponent_team)
                     stats["opponent_sack_total"] = self.stat_aggregator.get_defense_sack_total(opponent_team)
                     stats["opponent_blitz_rate"] = self.stat_aggregator.get_defense_blitz_rate(opponent_team)
-
-                # Add injury context for WR/TE props (receiving yards, receptions)
-                if market in ["receiving_yards", "receptions", "receiving_tds"]:
-                    stats["injured_receivers"] = self.stat_aggregator.get_injured_receivers(player_profile)
 
         return stats
 
@@ -356,10 +344,6 @@ class EVCalculator:
             line = bet.get("line", 0)
 
             player_avg = stats.get("player_averages", {})
-            injury_status = stats.get("injury_status", "healthy")
-
-            if injury_status in ["out", "injured_reserve"]:
-                return f"{player} is {injury_status} - avoid this bet"
 
             # Get relevant average with correct key mapping
             if market == "passing_yards":
@@ -387,14 +371,8 @@ class EVCalculator:
 
             # Add context info
             def_rank = stats.get("opponent_def_rank", 16)
-            injured_wr = len(stats.get("injured_receivers", []))
-            injured_ol = len(stats.get("injured_ol", []))
 
             context = f" vs ##{def_rank} defense"
-            if injured_wr > 0:
-                context += f", {injured_wr} WR/TE out"
-            if injured_ol > 0:
-                context += f", {injured_ol} OL out"
 
             if avg_val > 0:
                 return f"{player} averages {avg_val:.1f} {unit}/game{context}. Line: {line}"

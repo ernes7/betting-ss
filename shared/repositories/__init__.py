@@ -5,6 +5,8 @@ from .prediction_repository import PredictionRepository
 from .results_repository import ResultsRepository
 from .odds_repository import OddsRepository
 from .analysis_repository import AnalysisRepository
+from .ev_results_repository import EVResultsRepository
+from .comparison_repository import ComparisonRepository
 
 __all__ = [
     "BaseRepository",
@@ -12,4 +14,6 @@ __all__ = [
     "ResultsRepository",
     "OddsRepository",
     "AnalysisRepository",
+    "EVResultsRepository",
+    "ComparisonRepository",
 ]
