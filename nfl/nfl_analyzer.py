@@ -94,6 +94,10 @@ Return valid JSON (no reasoning per bet, just actual value):
       "ev_percent": 8.5,
       "won": true,
       "actual_value": "299 pass yards",
+      "predicted_line": 250.5,
+      "actual_numeric": 299,
+      "stat_type": "passing_yards",
+      "direction": "over",
       "stake": {FIXED_BET_AMOUNT},
       "profit": 150.00
     }},
@@ -104,6 +108,10 @@ Return valid JSON (no reasoning per bet, just actual value):
       "ev_percent": 5.2,
       "won": false,
       "actual_value": "99 rec yards",
+      "predicted_line": 65.5,
+      "actual_numeric": 99,
+      "stat_type": "receiving_yards",
+      "direction": "under",
       "stake": {FIXED_BET_AMOUNT},
       "profit": -100.00
     }}
@@ -117,7 +125,13 @@ Return valid JSON (no reasoning per bet, just actual value):
     "total_staked": 500.00,
     "roi_percent": 42.0,
     "avg_predicted_ev": 6.2,
-    "realized_ev": 3.5
+    "realized_ev": 3.5,
+    "avg_margin": 18.5,
+    "avg_margin_won": 42.3,
+    "avg_margin_lost": -25.0,
+    "max_margin": 78.5,
+    "min_margin": -45.0,
+    "close_calls": 1
   }},
   "insights": [
     "3/5 bets hit (60% win rate, +42% ROI)",
@@ -138,13 +152,24 @@ Return valid JSON (no reasoning per bet, just actual value):
 - `roi_percent`: (total_profit / total_staked) × 100
 - `avg_predicted_ev`: Average of all ev_percent values from prediction
 - `realized_ev`: Actual edge realized based on results
+- `avg_margin`: Average of all margin values (actual_numeric - predicted_line)
+- `avg_margin_won`: Average margin for winning bets only
+- `avg_margin_lost`: Average margin for losing bets only (will be negative)
+- `max_margin`: Largest margin (best performance)
+- `min_margin`: Smallest margin (worst performance)
+- `close_calls`: Count of bets within ±10 units of the line
 
 **IMPORTANT INSTRUCTIONS:**
 1. Return ONLY the JSON object, no markdown code blocks, no extra text
 2. Ensure all JSON is valid and properly formatted
 3. Be thorough in checking all stats tables for player data
 4. Handle player name variations (e.g., check both full name and abbreviated)
-5. For each bet, only include "actual_value" (e.g., "299 pass yards") - NO detailed reasoning to save tokens
+5. For each bet, extract these fields:
+   - `actual_value`: Human-readable (e.g., "299 pass yards")
+   - `predicted_line`: Extract number from bet (e.g., "Over 250.5" → 250.5)
+   - `actual_numeric`: Player's actual stat value (e.g., 299)
+   - `stat_type`: e.g., "passing_yards", "rushing_yards", "receiving_yards", "receptions"
+   - `direction`: "over" or "under" (extracted from bet description)
 6. Calculate profit/loss accurately using the formula above
 7. Round profit values to 2 decimal places
 8. Generate 3-5 concise insights about overall prediction performance (not individual bets)

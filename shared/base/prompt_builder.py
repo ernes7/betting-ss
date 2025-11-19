@@ -65,7 +65,7 @@ MATCHUP: {team_a} @ {team_b} | HOME: {home_team}
 METHODOLOGY:
 1. IMPLIED PROBABILITY: Positive odds: 100/(odds+100), Negative: |odds|/(|odds|+100)
 2. TRUE PROBABILITY: Analyze stats (season avg, last 3 games, matchup) → BE CONSERVATIVE (reduce by 10-15%)
-3. EXPECTED VALUE: EV = (True Prob × Decimal Odds) - 1 | MINIMUM: +3.0% to qualify
+3. EXPECTED VALUE: EV = (True Prob × Decimal Odds) - 1 | MINIMUM: +0.0% (any positive EV qualifies)
 
 CRITICAL DATA USAGE RULES (MUST FOLLOW):
 1. ⛔ NEVER use statistics, rankings, or data that are NOT explicitly provided in the DATA section below
@@ -75,6 +75,7 @@ CRITICAL DATA USAGE RULES (MUST FOLLOW):
 5. ✅ If defensive data is missing for a team, DO NOT mention defensive matchups for that team
 6. ✅ Every statistical claim MUST be traceable to a specific field in the provided JSON data
 7. ✅ When citing stats in reasoning, reference the exact source (e.g., "rushing_offense shows 117.7 rush_yds_per_g")
+8. ✅ For rankings: Use fields ending in "_rank" (e.g., "points_per_g_rank": 5 means 5th in league). Lower rank = better (1 = best, 32 = worst)
 
 EXAMPLES OF FORBIDDEN STATEMENTS (DO NOT USE):
 ❌ "Patriots allow 4.5 YPC and 155.5 rush yards/game" (if not in provided data)
@@ -91,6 +92,7 @@ ALLOWED STATEMENTS (ONLY USE THESE):
 REQUIREMENTS:
 - Exactly 5 bets (NO parlays, duplicates, or replacements)
 - All bet types: Moneyline, Spread, Totals, {sport_components.bet_types_list}
+- DO NOT include both moneyline AND spread for the same team (pick one or the other)
 - Max 3 yardage props (prefer diversity)
 - Only healthy players, 8+ games data
 {sport_components.injury_instructions}

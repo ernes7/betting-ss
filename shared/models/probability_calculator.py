@@ -199,6 +199,34 @@ class ProbabilityCalculator:
             return ProbabilityCalculator.calculate_generic_milestone_prob(bet, stats)
 
     @staticmethod
+    def _get_defense_multiplier(opponent_def_rank: int) -> float:
+        """Get defense multiplier based on tier system.
+
+        Args:
+            opponent_def_rank: Defense rank 1-32 (1 = best, 32 = worst)
+
+        Returns:
+            Multiplier: <1.0 for good defenses, >1.0 for poor defenses
+
+        Tiers:
+            Elite (1-5):       0.75× (-25%)
+            Above Avg (6-12):  0.90× (-10%)
+            Average (13-20):   1.00× (neutral)
+            Below Avg (21-28): 1.15× (+15%)
+            Poor (29-32):      1.30× (+30%)
+        """
+        if opponent_def_rank <= 5:    # Elite
+            return 0.75
+        elif opponent_def_rank <= 12: # Above average
+            return 0.90
+        elif opponent_def_rank <= 20: # Average
+            return 1.00
+        elif opponent_def_rank <= 28: # Below average
+            return 1.15
+        else:                         # Poor (29-32)
+            return 1.30
+
+    @staticmethod
     def calculate_passing_yards_prob(bet: Dict[str, Any], stats: Dict[str, Any]) -> float:
         """Calculate probability of QB passing yards over/under line.
 
@@ -221,7 +249,7 @@ class ProbabilityCalculator:
         # Adjust for opponent defense
         opponent_def_rank = stats.get("opponent_def_rank", 16)
         # Better defense (rank 1) reduces production, worse defense (rank 32) increases
-        defense_multiplier = 1.0 + ((opponent_def_rank - 16) * 0.015)  # ±1.5% per rank
+        defense_multiplier = ProbabilityCalculator._get_defense_multiplier(opponent_def_rank)
 
         # Adjust for team offensive quality
         team_offense_rank = stats.get("team_offense_rank", 16)
@@ -268,7 +296,7 @@ class ProbabilityCalculator:
 
         # Adjust for opponent defense
         opponent_def_rank = stats.get("opponent_def_rank", 16)
-        defense_multiplier = 1.0 + ((opponent_def_rank - 16) * 0.015)
+        defense_multiplier = ProbabilityCalculator._get_defense_multiplier(opponent_def_rank)
 
         # Adjust for team offensive quality
         team_offense_rank = stats.get("team_offense_rank", 16)
@@ -308,7 +336,7 @@ class ProbabilityCalculator:
 
         # Adjust for opponent defense
         opponent_def_rank = stats.get("opponent_def_rank", 16)
-        defense_multiplier = 1.0 + ((opponent_def_rank - 16) * 0.015)
+        defense_multiplier = ProbabilityCalculator._get_defense_multiplier(opponent_def_rank)
 
         # Adjust for team offensive quality
         team_offense_rank = stats.get("team_offense_rank", 16)

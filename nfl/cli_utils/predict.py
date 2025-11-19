@@ -504,7 +504,7 @@ def predict_game():
                     conservative_adjustment=0.85
                 )
 
-                top_ev_bets = ev_calculator.get_top_n(n=5, min_ev_threshold=3.0)
+                top_ev_bets = ev_calculator.get_top_n(n=5, min_ev_threshold=0.0)
                 all_bets = ev_calculator.calculate_all_ev(min_ev_threshold=0.0)
 
                 # Format and save EV results

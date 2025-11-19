@@ -70,7 +70,7 @@ class BatchPredictionService:
         game_date: str,
         base_dir: str = ".",
         conservative_adjustment: float = 0.85,
-        min_ev_threshold: float = 3.0,
+        min_ev_threshold: float = 0.0,
         skip_existing: bool = True
     ) -> Dict:
         """Run both EV Calculator and AI Predictor for all games on a date.
@@ -79,7 +79,7 @@ class BatchPredictionService:
             game_date: Game date in YYYY-MM-DD format
             base_dir: Base directory for data files
             conservative_adjustment: EV calculator conservative adjustment (0.85 = 15% reduction)
-            min_ev_threshold: Minimum EV% to include in results (default 3.0%)
+            min_ev_threshold: Minimum EV% to include in results (default 0.0% - any positive EV)
             skip_existing: If True, skip games that already have both predictions
 
         Returns:

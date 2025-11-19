@@ -276,6 +276,11 @@ def optimize_rankings(rankings: dict, team_a: str, team_b: str) -> dict:
             if field == "team":
                 continue
 
+            # Skip the bogus 'ranker' field from scraped data - it doesn't represent actual rankings
+            # We recalculate proper rankings below based on actual stat values
+            if field == "ranker":
+                continue
+
             # Extract all values for this field (filter out None/empty)
             values = []
             for team in all_teams:
@@ -323,13 +328,20 @@ def optimize_rankings(rankings: dict, team_a: str, team_b: str) -> dict:
                     team_data[f"{field}_percentile"] = percentile
 
         # Update headers to include rank/percentile fields
-        updated_headers = headers.copy()
+        # Also remove the bogus 'ranker' field
+        updated_headers = [h for h in headers if h != "ranker"]
         for field in headers:
-            if field != "team":
+            if field != "team" and field != "ranker":
                 if f"{field}_rank" not in updated_headers:
                     updated_headers.append(f"{field}_rank")
                 if f"{field}_percentile" not in updated_headers:
                     updated_headers.append(f"{field}_percentile")
+
+        # Remove ranker field from team data
+        if "ranker" in team_a_data:
+            del team_a_data["ranker"]
+        if "ranker" in team_b_data:
+            del team_b_data["ranker"]
 
         # Store optimized table with only 2 teams
         optimized[table_name] = {

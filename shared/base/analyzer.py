@@ -299,7 +299,51 @@ class BaseAnalyzer(ABC):
             else:
                 raise Exception(f"Could not parse JSON from response: {response_text[:200]}")
 
+        # Add margin calculations for each bet
+        if 'bet_results' in analysis_data:
+            for bet in analysis_data['bet_results']:
+                if 'predicted_line' in bet and 'actual_numeric' in bet:
+                    # Calculate margin (actual - predicted)
+                    bet['margin'] = bet['actual_numeric'] - bet['predicted_line']
+
+                    # Calculate margin percentage
+                    if bet['predicted_line'] != 0:
+                        bet['margin_pct'] = round((bet['margin'] / bet['predicted_line']) * 100, 2)
+                    else:
+                        bet['margin_pct'] = 0
+
+                    # Classify bet type
+                    bet['bet_type'] = self._classify_bet_type(bet.get('bet', ''))
+
         return analysis_data
+
+    def _classify_bet_type(self, bet_description: str) -> str:
+        """Classify bet into type based on description.
+
+        Args:
+            bet_description: Bet description string
+
+        Returns:
+            Bet type: "player_prop", "spread", "total", or "moneyline"
+        """
+        bet_lower = bet_description.lower()
+
+        # Player props (contains over/under with stat types)
+        if any(word in bet_lower for word in ['over', 'under']):
+            if any(stat in bet_lower for stat in ['rushing', 'passing', 'receiving', 'reception', 'yards', 'touchdowns', 'tds']):
+                return "player_prop"
+            elif 'total' in bet_lower:
+                return "total"
+
+        # Spreads (contains + or - with team name)
+        if ('+' in bet_description or '-' in bet_description) and 'ml' not in bet_lower:
+            return "spread"
+
+        # Moneyline
+        if 'ml' in bet_lower or 'moneyline' in bet_lower:
+            return "moneyline"
+
+        return "unknown"
 
     def _save_analysis(self, game_key: str, game_meta: dict, analysis_data: dict):
         """Save analysis using repository.

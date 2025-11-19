@@ -79,13 +79,14 @@ class EVCalculator:
 
         return bets_with_ev
 
-    def get_top_n(self, n: int = 10, min_ev_threshold: float = 3.0, deduplicate_players: bool = True) -> List[Dict[str, Any]]:
+    def get_top_n(self, n: int = 10, min_ev_threshold: float = 0.0, deduplicate_players: bool = True, max_receivers_per_team: int = 1) -> List[Dict[str, Any]]:
         """Get top N bets by EV.
 
         Args:
             n: Number of top bets to return
-            min_ev_threshold: Minimum EV percentage (default 3.0%)
+            min_ev_threshold: Minimum EV percentage (default 0.0% - any positive EV)
             deduplicate_players: If True, show only best bet per player (default True)
+            max_receivers_per_team: Maximum receivers (WR/TE) per team to avoid correlation (default 1)
 
         Returns:
             Top N bets ranked by EV
@@ -94,14 +95,39 @@ class EVCalculator:
 
         if deduplicate_players:
             seen_players = set()
+            team_receiver_count = {}  # Track receiver count per team
             deduped_bets = []
+
             for bet in all_bets:  # Already sorted by EV descending
                 bet_type = bet.get("bet_type")
                 if bet_type == "player_prop":
                     player = bet.get("player", "")
-                    if player and player not in seen_players:
+                    team = bet.get("team", "")
+                    position = bet.get("position", "")
+                    market = bet.get("market", "")
+
+                    # Check if this is a receiver (WR/TE or receiving market)
+                    is_receiver = (
+                        position in ["WR", "TE"] or
+                        market in ["receiving_yards", "receptions"]
+                    )
+
+                    # Skip if player already seen
+                    if player and player in seen_players:
+                        continue
+
+                    # Skip if this is a receiver and team already has max receivers
+                    if is_receiver and team:
+                        team_receivers = team_receiver_count.get(team, 0)
+                        if team_receivers >= max_receivers_per_team:
+                            continue
+
+                    # Add the bet
+                    if player:
                         seen_players.add(player)
-                        deduped_bets.append(bet)
+                    if is_receiver and team:
+                        team_receiver_count[team] = team_receiver_count.get(team, 0) + 1
+                    deduped_bets.append(bet)
                 else:
                     # Always keep game-level bets (moneyline, spread, total)
                     deduped_bets.append(bet)
