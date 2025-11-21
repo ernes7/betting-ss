@@ -8,19 +8,17 @@ class NFLPromptComponents:
 
     bet_types_list = """  * Moneyline - underdog wins with positive odds (e.g., "Panthers ML +625", "Bears ML +124")
   * Spread - underdog covers with positive odds (e.g., "Panthers +12.5 -102", "Vikings +8.5 -105")
-  * QB passing yards O/U (e.g., "Justin Herbert Over 265.5 passing yards")
-  * RB rushing yards O/U (e.g., "Aaron Jones Over 55.5 rushing yards")
-  * WR receiving yards O/U (e.g., "Justin Jefferson Over 75.5 receiving yards")
-  * Player receptions O/U (e.g., "Justin Jefferson Over 6.5 receptions")
-  * QB pass completions O/U (e.g., "Justin Herbert Over 22.5 completions")
-  * QB pass attempts O/U (e.g., "Justin Herbert Over 35.5 attempts")
-  * Player rush attempts O/U (e.g., "Aaron Jones Over 18.5 rush attempts")
-  * Player anytime TD / touchdown scorers (e.g., "Justin Jefferson anytime TD", "Cole Kmet anytime TD +340")
-  * Individual defensive player sacks O/U (PLAYER SPECIFIC ONLY - e.g., "Joey Bosa Over 0.5 sacks")
-  * Defensive player tackles + assists O/U (e.g., "Roquan Smith Over 8.5 tackles+assists")
-  * Individual defensive player interceptions O/U (PLAYER SPECIFIC ONLY - e.g., "Sauce Gardner Over 0.5 interceptions")
-  * Game total points O/U (e.g., "Over 45.5 total points")
-  * Field goals O/U (e.g., "Over 3.5 field goals")"""
+  * QB passing yards Over/Uunder
+  * RB rushing yards Over/Uunder
+  * WR receiving yards Oover/Under
+  * Player receptions Over/Under
+  * QB pass completions Over/Under
+  * QB pass attempts Over/Under
+  * Player rush attempts Over/Under
+  * Player anytime TD / touchdown scorers
+  * Individual defensive player sacks Over/Under
+  * Defensive player tackles + assists Over/Under
+  * Game total points Over/Under"""
 
     restrictions = """- DO NOT use combined props (combined passing attempts, combined rush attempts, etc.)
 - DO NOT use game total touchdowns (not available on Hard Rock)
@@ -45,11 +43,7 @@ class NFLPromptComponents:
 
     conservative_line_rules = """CONSERVATIVE LINE SELECTION (CRITICAL):
 - Yardage props (passing/rushing/receiving yards): Pick lines 30% BELOW player's season average
-  Example: Player averages 100 yards → Target line at 70.5 or lower
 - Volume props (completions, attempts, receptions, targets, rush attempts): Pick lines 25% BELOW player's average
-  Example: Player averages 20 completions → Target line at 15.5 or lower
-- Game totals: Pick numbers with 15+ point cushion from expected total
-  Example: Expected 48 points → Pick Over 33.5 or Under 63.5
 - AVOID tight lines even if "likely" - we need CERTAINTY not likelihood
 - Better to have ultra-safe props than risky ones"""
 

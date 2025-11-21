@@ -1,10 +1,12 @@
 """Main EV calculator - orchestrates bet parsing, stat aggregation, and probability calculation."""
 
 from typing import List, Dict, Any, Optional
+from pathlib import Path
 from shared.models.bet_parser import BetParser
 from shared.models.stat_aggregator import StatAggregator
 from shared.models.probability_calculator import ProbabilityCalculator
 from shared.models.bet_validator import BetValidator
+from shared.models.ev_calibrator import EVCalibrator
 from nfl.teams import PFR_ABBR_TO_NAME
 
 
@@ -35,6 +37,22 @@ class EVCalculator:
         self.stat_aggregator = StatAggregator(sport_config, base_dir)
         self.prob_calculator = ProbabilityCalculator()
 
+        # Initialize calibrator with historical data
+        # Build path to analysis directory (e.g., nfl/data/analysis)
+        if base_dir:
+            analysis_dir = Path(base_dir) / sport_config.sport_name / "data" / "analysis"
+        else:
+            analysis_dir = Path(sport_config.sport_name) / "data" / "analysis"
+
+        # TEMPORARILY DISABLED: Calibrator is over-correcting (reducing probabilities by 50-70%)
+        # TODO: Fix calibrator to be less aggressive, then re-enable
+        # try:
+        #     self.calibrator = EVCalibrator(str(analysis_dir))
+        # except Exception:
+        #     # If calibration fails, disable it (will use conservative adjustment only)
+        #     self.calibrator = None
+        self.calibrator = None  # Disabled - over-calibrating
+
         # Extract team info using PFR abbreviations
         teams = odds_data.get("teams", {})
         away_pfr = teams.get("away", {}).get("pfr_abbr", "")
@@ -50,6 +68,27 @@ class EVCalculator:
         self.away_rankings = self.stat_aggregator.load_team_rankings(self.away_team)
         self.home_rankings = self.stat_aggregator.load_team_rankings(self.home_team)
 
+        # Validate that data loaded successfully
+        if not self.away_profile or not self.home_profile:
+            print(f"⚠️  Warning: Profiles missing for {self.away_team} or {self.home_team}")
+            print(f"    Away profile loaded: {bool(self.away_profile)}")
+            print(f"    Home profile loaded: {bool(self.home_profile)}")
+
+        # Check if stat aggregator has rankings data (test with scoring average)
+        test_stat_away = self.stat_aggregator.get_team_scoring_average(self.away_team)
+        test_stat_home = self.stat_aggregator.get_team_scoring_average(self.home_team)
+        if test_stat_away == 20.0 and test_stat_home == 20.0:
+            # Both teams using default value - rankings likely not loaded
+            print(f"⚠️  Warning: Both teams using default stats (20.0 PPG)")
+            print(f"    This suggests rankings may not be loaded properly")
+            print(f"    Check that rankings directory exists and has data")
+
+            # Fail fast with clear error instead of silently continuing with bad data
+            raise ValueError(
+                f"Rankings data not available for {self.away_team} and {self.home_team}. "
+                f"Please ensure rankings have been scraped."
+            )
+
     def calculate_all_ev(self, min_ev_threshold: float = 0.0) -> List[Dict[str, Any]]:
         """Calculate EV for all bets in odds file.
 
@@ -61,6 +100,7 @@ class EVCalculator:
         """
         # Parse all bets
         all_bets = self.bet_parser.parse_all_bets(self.odds_data)
+        print(f"[DEBUG] Parsed {len(all_bets)} bets from odds")
 
         # Calculate EV for each bet
         bets_with_ev = []
@@ -71,8 +111,22 @@ class EVCalculator:
                     bets_with_ev.append(ev_result)
             except Exception as e:
                 # Skip bets that error out (missing data, etc.)
-                print(f"Error calculating EV for {bet.get('description', 'unknown bet')}: {e}")
+                bet_desc = bet.get('description', 'unknown bet')
+                bet_type = bet.get('bet_type', 'unknown')
+                player = bet.get('player', 'N/A')
+
+                print(f"❌ Error calculating EV for {bet_desc}")
+                print(f"    Type: {bet_type}, Player: {player}")
+                print(f"    Error: {e}")
+
+                # Only show full stack trace in debug mode (set DEBUG=1 env var)
+                import os
+                if os.getenv('DEBUG'):
+                    import traceback
+                    traceback.print_exc()
                 continue
+
+        print(f"[DEBUG] {len(bets_with_ev)} bets passed validation and met EV threshold")
 
         # Sort by EV (highest first)
         bets_with_ev.sort(key=lambda x: x["ev_percent"], reverse=True)
@@ -150,23 +204,39 @@ class EVCalculator:
         # Validate bet before calculation
         is_valid, reason = BetValidator.is_valid_bet(bet, stats)
         if not is_valid:
-            # Skip invalid bets
+            # Log validation failure for debugging
+            bet_desc = bet.get("description", "unknown bet")
+            print(f"⚠️  Validation failed: {reason} ({bet_desc})")
             return None
 
         # Calculate true probability
         true_prob = self.prob_calculator.calculate_probability(bet, stats)
 
+        # Calculate preliminary EV for calibration
+        decimal_odds = bet.get("decimal_odds", 1.0)
+        preliminary_ev = ((true_prob / 100) * decimal_odds - 1) * 100
+
+        # Apply Bayesian calibration if available
+        if self.calibrator:
+            bet_type = bet.get("bet_type", "unknown")
+            calibrated_prob = self.calibrator.calibrate_probability(
+                raw_probability=true_prob,
+                predicted_ev=preliminary_ev,
+                bet_type=bet_type
+            )
+        else:
+            calibrated_prob = true_prob
+
         # Apply conservative adjustment (reduce by 10-15%)
         adjusted_prob = self.stat_aggregator.apply_conservative_adjustment(
-            true_prob,
+            calibrated_prob,
             self.conservative_adjustment
         )
 
         # Convert probability to decimal (0-1 range)
         prob_decimal = adjusted_prob / 100
 
-        # Calculate EV
-        decimal_odds = bet.get("decimal_odds", 1.0)
+        # Calculate final EV (decimal_odds already retrieved above)
         ev_decimal = (prob_decimal * decimal_odds) - 1
         ev_percent = ev_decimal * 100
 
@@ -214,25 +284,36 @@ class EVCalculator:
         elif bet_type == "player_prop":
             # Player prop needs player stats
             player_name = bet.get("player", "")
-            team_abbr = (bet.get("team") or "").upper()
+            team_side = (bet.get("team") or "").upper()
             market = bet.get("market", "")
 
             # Determine which team the player is on
-            away_abbr = self.odds_data.get("teams", {}).get("away", {}).get("abbr")
-            home_abbr = self.odds_data.get("teams", {}).get("home", {}).get("abbr")
+            # Get BOTH abbr (e.g., "HOU") AND pfr_abbr (e.g., "htx") for each team
+            away_teams = self.odds_data.get("teams", {}).get("away", {})
+            home_teams = self.odds_data.get("teams", {}).get("home", {})
 
-            if team_abbr == away_abbr:
+            away_abbr = (away_teams.get("abbr") or "").upper()
+            away_pfr_abbr = (away_teams.get("pfr_abbr") or "").upper()
+            home_abbr = (home_teams.get("abbr") or "").upper()
+            home_pfr_abbr = (home_teams.get("pfr_abbr") or "").upper()
+
+            # Handle "AWAY"/"HOME" strings, abbr field (e.g., "HOU"), AND pfr_abbr field (e.g., "HTX")
+            if team_side == "AWAY" or team_side == away_abbr or team_side == away_pfr_abbr:
                 player_profile = self.away_profile
                 player_team = self.away_team
                 opponent_team = self.home_team
                 # Get spread from away team perspective (positive = underdog, negative = favorite)
                 spread_line = self.odds_data.get("game_lines", {}).get("spread", {}).get("away", 0)
-            else:
+            elif team_side == "HOME" or team_side == home_abbr or team_side == home_pfr_abbr:
                 player_profile = self.home_profile
                 player_team = self.home_team
                 opponent_team = self.away_team
                 # Get spread from home team perspective
                 spread_line = self.odds_data.get("game_lines", {}).get("spread", {}).get("home", 0)
+            else:
+                # Unknown team - log warning and skip
+                print(f"⚠️  Unknown team '{team_side}' for {player_name} (expected AWAY/HOME, {away_abbr}/{home_abbr}, or {away_pfr_abbr}/{home_pfr_abbr})")
+                return stats
 
             # Load player stats
             player_stats = self.stat_aggregator.load_player_stats(player_name, player_profile)
@@ -242,6 +323,13 @@ class EVCalculator:
                 stats["position"] = player_stats.get("position", "")
                 stats["player_stats"] = player_stats  # Store for validator
                 stats["spread_line"] = spread_line  # Game script context
+
+                # Infer player role for adaptive variance calculation
+                stats["player_role"] = self._infer_player_role(
+                    stats["position"],
+                    stats["player_averages"],
+                    player_profile
+                )
 
                 # Get opponent defense rank for relevant market
                 defense_category = self._map_market_to_defense(market)
@@ -342,6 +430,56 @@ class EVCalculator:
         }
 
         return market_map.get(market)
+
+    def _infer_player_role(
+        self,
+        position: str,
+        player_averages: Dict[str, Any],
+        player_profile: Dict[str, Any]
+    ) -> str:
+        """Infer player role (WR1, RB2, etc.) based on usage stats.
+
+        Args:
+            position: Player position (QB, RB, WR, TE)
+            player_averages: Player's season averages
+            player_profile: Team profile for comparison
+
+        Returns:
+            Player role string (e.g., "QB1", "WR1", "RB2", "TE1")
+        """
+        # QBs are typically QB1 (starter)
+        if position == "QB":
+            return "QB1"
+
+        # TEs - check if they're the primary receiving option
+        if position == "TE":
+            rec_per_g = player_averages.get("rec_per_g", 0)
+            return "TE1" if rec_per_g >= 3.0 else "TE2"
+
+        # RBs - infer role based on rush attempts
+        if position == "RB":
+            rush_att_per_g = player_averages.get("rush_att_per_g", 0)
+            if rush_att_per_g >= 12.0:
+                return "RB1"  # Bell cow / primary back
+            elif rush_att_per_g >= 6.0:
+                return "RB2"  # Timeshare / change of pace
+            else:
+                return "RB3"  # Situational / backup
+
+        # WRs - infer role based on targets/receptions
+        if position == "WR":
+            rec_per_g = player_averages.get("rec_per_g", 0)
+            targets_per_g = player_averages.get("targets_per_g", 0) if "targets_per_g" in player_averages else rec_per_g * 1.5
+
+            if targets_per_g >= 7.0 or rec_per_g >= 5.0:
+                return "WR1"  # Primary receiver
+            elif targets_per_g >= 4.5 or rec_per_g >= 3.0:
+                return "WR2"  # Secondary receiver
+            else:
+                return "WR3"  # Depth receiver / situational
+
+        # Default fallback
+        return f"{position}1"
 
     def _generate_reasoning(
         self,

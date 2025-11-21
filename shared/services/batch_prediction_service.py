@@ -22,15 +22,21 @@ from shared.utils.timezone_utils import get_eastern_now
 class BatchPredictionService:
     """Service for running both EV Calculator and AI Predictor on multiple games."""
 
-    def __init__(self, sport_code: str, sport_config):
+    def __init__(self, sport_code: str, sport_config, predictions_metadata_service, profile_service, scraper):
         """Initialize batch prediction service.
 
         Args:
             sport_code: Sport identifier (e.g., 'nfl')
             sport_config: Sport configuration object
+            predictions_metadata_service: Service for tracking prediction metadata
+            profile_service: Service for loading/scraping team profiles
+            scraper: Sport scraper for auto-fetching rankings
         """
         self.sport_code = sport_code
         self.sport_config = sport_config
+        self.predictions_metadata_service = predictions_metadata_service
+        self.profile_service = profile_service
+        self.scraper = scraper
 
         # Initialize repositories
         self.ev_repo = EVResultsRepository(sport_code)
@@ -275,10 +281,14 @@ class BatchPredictionService:
 
             # 1. Run EV Calculator
             ev_start = time.time()
+
+            # Use absolute project root instead of relative "." to ensure data files are found
+            project_root = os.getcwd() if base_dir == "." else base_dir
+
             ev_calculator = EVCalculator(
                 odds_data=odds_data,
                 sport_config=self.sport_config,
-                base_dir=base_dir,
+                base_dir=project_root,
                 conservative_adjustment=conservative_adjustment
             )
 
@@ -314,9 +324,24 @@ class BatchPredictionService:
             ai_start = time.time()
 
             # Load data for AI predictor
+            # Auto-scrape rankings if not scraped today (same pattern as predict_all_games)
+            if self.scraper and not self.scraper.rankings_metadata_mgr.was_scraped_today():
+                print("📊 Fetching fresh rankings data...")
+                self.scraper.extract_rankings()
+
             rankings = self.predictor.load_ranking_tables()
-            profile_a = self.predictor.load_team_profile(away_name)
-            profile_b = self.predictor.load_team_profile(home_name)
+
+            # Auto-scrape profiles if missing (same pattern as predict_all_games)
+            profiles = self.profile_service.load_team_profiles(away_name, home_name)
+            profile_a = profiles.get(away_name)
+            profile_b = profiles.get(home_name)
+
+            # Validate profiles loaded successfully
+            if not profile_a or not profile_b:
+                return {
+                    "success": False,
+                    "error": f"Failed to load profiles for {away_name} and {home_name}"
+                }
 
             ai_result = self.predictor.generate_predictions(
                 team_a=away_name,
@@ -389,6 +414,18 @@ class BatchPredictionService:
 
             self.comparison_repo.save_comparison(
                 game_date, home_abbr, away_abbr, comparison
+            )
+
+            # Update metadata to track this game
+            game_key = f"{game_date}_{home_abbr}_{away_abbr}"
+            self.predictions_metadata_service.mark_game_predicted(
+                game_key,
+                game_date,
+                [away_name, home_name],
+                home_name,
+                home_abbr,
+                odds_used=True,
+                odds_source="draftkings"
             )
 
             return {

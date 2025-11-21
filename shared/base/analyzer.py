@@ -302,18 +302,27 @@ class BaseAnalyzer(ABC):
         # Add margin calculations for each bet
         if 'bet_results' in analysis_data:
             for bet in analysis_data['bet_results']:
-                if 'predicted_line' in bet and 'actual_numeric' in bet:
+                # Get predicted line and actual numeric values
+                predicted_line = bet.get('predicted_line')
+                actual_numeric = bet.get('actual_numeric')
+
+                # Only calculate margin if both values are not None
+                if predicted_line is not None and actual_numeric is not None:
                     # Calculate margin (actual - predicted)
-                    bet['margin'] = bet['actual_numeric'] - bet['predicted_line']
+                    bet['margin'] = actual_numeric - predicted_line
 
                     # Calculate margin percentage
-                    if bet['predicted_line'] != 0:
-                        bet['margin_pct'] = round((bet['margin'] / bet['predicted_line']) * 100, 2)
+                    if predicted_line != 0:
+                        bet['margin_pct'] = round((bet['margin'] / predicted_line) * 100, 2)
                     else:
                         bet['margin_pct'] = 0
+                else:
+                    # For bets without numeric lines (moneylines, TDs, spreads)
+                    bet['margin'] = None
+                    bet['margin_pct'] = None
 
-                    # Classify bet type
-                    bet['bet_type'] = self._classify_bet_type(bet.get('bet', ''))
+                # Classify bet type
+                bet['bet_type'] = self._classify_bet_type(bet.get('bet', ''))
 
         return analysis_data
 

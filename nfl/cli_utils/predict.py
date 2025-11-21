@@ -810,7 +810,7 @@ def predict_all_games():
 def predict_all_games_dual():
     """Run BOTH EV Calculator and AI Predictor for all games on a date."""
     print_header("Dual Prediction System (EV + AI)")
-    
+
     console.print(Panel.fit(
         "[bold cyan]Run BOTH prediction systems for all games[/bold cyan]\n\n"
         "[white]This will run:[/white]\n"
@@ -821,12 +821,42 @@ def predict_all_games_dual():
         title="ℹ️  Info",
         border_style="cyan"
     ))
-    
-    # Date selection
+
+    # Auto-detect available schedule dates
+    odds_base_dir = Path("nfl/data/odds")
+    available_dates = []
+
+    if odds_base_dir.exists():
+        for schedule_file in sorted(odds_base_dir.glob("*/schedule.json"), reverse=True):
+            date_str = schedule_file.parent.name
+            try:
+                with open(schedule_file) as f:
+                    schedule = json.load(f)
+                    game_count = len(schedule.get("games", []))
+                    available_dates.append((date_str, game_count))
+            except (json.JSONDecodeError, KeyError):
+                continue
+
+    if not available_dates:
+        print_error("No schedules found. Please fetch odds first using option 5.")
+        return
+
+    # Show available dates
+    console.print()
+    print_info("📅 Available schedule dates:")
+    for date_str, count in available_dates[:5]:  # Show up to 5 most recent
+        console.print(f"  • [cyan]{date_str}[/cyan]: {count} game(s)")
+    console.print()
+
+    # Smart default: most recent schedule
+    default_date = available_dates[0][0]
+
+    # Date selection with smart default
     questions = [
         inquirer.Text(
             "game_date",
-            message="Game date (YYYY-MM-DD)",
+            message=f"Which game date to predict? (YYYY-MM-DD) [default: {default_date}]",
+            default=default_date,
             validate=is_valid_inquirer_date
         )
     ]
@@ -834,7 +864,7 @@ def predict_all_games_dual():
     if not answers:
         print_warning("Cancelled")
         return
-    
+
     game_date = answers["game_date"]
     
     # Confirm cost
@@ -857,7 +887,7 @@ def predict_all_games_dual():
     
     # Initialize batch service
     console.print(f"\n[cyan]Initializing batch prediction service...[/cyan]")
-    batch_service = BatchPredictionService("nfl", nfl_sport.config)
+    batch_service = BatchPredictionService("nfl", nfl_sport.config, predictions_metadata_service, profile_service, nfl_sport.scraper)
     
     # Run dual predictions
     try:

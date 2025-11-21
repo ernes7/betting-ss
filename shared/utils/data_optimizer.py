@@ -351,3 +351,111 @@ def optimize_rankings(rankings: dict, team_a: str, team_b: str) -> dict:
         }
 
     return optimized
+
+
+def calculate_recent_form(team_profile: dict, last_n_games: int = 5) -> dict:
+    """Calculate recent form statistics from last N games.
+
+    Args:
+        team_profile: Team profile dictionary with schedule_results
+        last_n_games: Number of recent games to analyze (default 5)
+
+    Returns:
+        Dictionary with recent form stats:
+        - points_per_game: Average points scored
+        - points_allowed_per_game: Average points allowed
+        - record: Win-loss record (e.g., "4-1")
+        - games_analyzed: Number of games in sample
+    """
+    if not team_profile or "schedule_results" not in team_profile:
+        return {
+            "points_per_game": 0.0,
+            "points_allowed_per_game": 0.0,
+            "record": "0-0",
+            "games_analyzed": 0
+        }
+
+    schedule = team_profile["schedule_results"]
+    games_data = schedule.get("data", [])
+
+    # Get last N completed games (skip future games)
+    completed_games = [
+        g for g in games_data
+        if g.get("tm") is not None and g.get("opp_points") is not None
+    ][-last_n_games:]
+
+    if not completed_games:
+        return {
+            "points_per_game": 0.0,
+            "points_allowed_per_game": 0.0,
+            "record": "0-0",
+            "games_analyzed": 0
+        }
+
+    # Calculate averages
+    total_points = sum(int(g.get("tm", 0) or 0) for g in completed_games)
+    total_allowed = sum(int(g.get("opp_points", 0) or 0) for g in completed_games)
+
+    # Calculate record
+    wins = sum(1 for g in completed_games if g.get("result", "").startswith("W"))
+    losses = len(completed_games) - wins
+
+    return {
+        "points_per_game": round(total_points / len(completed_games), 1),
+        "points_allowed_per_game": round(total_allowed / len(completed_games), 1),
+        "record": f"{wins}-{losses}",
+        "games_analyzed": len(completed_games),
+        "opponents": [g.get("opp", "Unknown") for g in completed_games]
+    }
+
+
+def get_player_recent_form(player_stats: list, player_name: str, stat_field: str, last_n_games: int = 5) -> dict:
+    """Get recent form for a specific player stat.
+
+    Args:
+        player_stats: List of player stat dictionaries (from team profile)
+        player_name: Player name to look up
+        stat_field: Stat field to calculate (e.g., "rush_yds", "rec_yds", "pass_yds")
+        last_n_games: Number of recent games to analyze
+
+    Returns:
+        Dictionary with recent form for this stat:
+        - recent_avg: Average for last N games
+        - games_analyzed: Number of games in sample
+        - games: List of individual game values
+    """
+    # Find the player
+    player = None
+    for p in player_stats:
+        if p.get("player", "").lower() == player_name.lower():
+            player = p
+            break
+
+    if not player:
+        return {
+            "recent_avg": 0.0,
+            "games_analyzed": 0,
+            "games": []
+        }
+
+    # Get the stat value (usually season total or average)
+    stat_value = player.get(stat_field, 0)
+    games_played = int(player.get("g", 0) or 0)
+
+    if games_played == 0:
+        return {
+            "recent_avg": 0.0,
+            "games_analyzed": 0,
+            "games": []
+        }
+
+    # Calculate per-game average
+    # Note: We don't have individual game logs in profiles, so we use season average
+    # This is a limitation - ideally we'd load game logs
+    per_game_avg = float(stat_value) / games_played if games_played > 0 else 0.0
+
+    return {
+        "recent_avg": round(per_game_avg, 1),
+        "games_analyzed": min(games_played, last_n_games),
+        "games": []  # Would need game log data to populate this
+    }

@@ -192,12 +192,12 @@ class BetParser:
         return bets
 
     @staticmethod
-    def is_valid_odds_range(odds: int, min_odds: int = -150, max_odds: int = 200) -> bool:
+    def is_valid_odds_range(odds: int, min_odds: int = -200, max_odds: int = 200) -> bool:
         """Check if odds are within acceptable range.
 
         Args:
             odds: American odds (e.g., +150, -110)
-            min_odds: Minimum acceptable odds (default -150)
+            min_odds: Minimum acceptable odds (default -200)
             max_odds: Maximum acceptable odds (default +200)
 
         Returns:

@@ -9,6 +9,33 @@ from shared.models.data_loader import DataLoader
 class StatAggregator:
     """Loads and aggregates stats from rankings and team profiles."""
 
+    # Common nickname mappings for player name matching
+    NICKNAME_MAP = {
+        'joshua': 'josh',
+        'christopher': 'chris',
+        'benjamin': 'ben',
+        'william': 'will',
+        'willie': 'will',
+        'michael': 'mike',
+        'matthew': 'matt',
+        'nicholas': 'nick',
+        'nicolas': 'nick',
+        'anthony': 'tony',
+        'joseph': 'joe',
+        'robert': 'rob',
+        'daniel': 'dan',
+        'andrew': 'drew',
+        'thomas': 'tom',
+        'james': 'jim',
+        'richard': 'rick',
+        'timothy': 'tim',
+        'kenneth': 'ken',
+        'jonathan': 'jon',
+        'alexander': 'alex',
+        'zachary': 'zach',
+        'patrick': 'pat',
+    }
+
     def __init__(self, sport_config, base_dir: str = None):
         """Initialize stat aggregator.
 
@@ -25,6 +52,35 @@ class StatAggregator:
 
         # Initialize DataLoader for cached rankings
         self.data_loader = DataLoader(sport_config, str(base_dir))
+
+    def normalize_player_name(self, name: str) -> str:
+        """Normalize player name for matching.
+
+        Handles nicknames, case, and common variations.
+
+        Args:
+            name: Player name (e.g., "Joshua Palmer", "Josh Palmer")
+
+        Returns:
+            Normalized lowercase name with nickname substitutions
+        """
+        if not name:
+            return ""
+
+        # Convert to lowercase for comparison
+        name_lower = name.lower().strip()
+
+        # Split into parts
+        parts = name_lower.split()
+        if not parts:
+            return ""
+
+        # Check first name for nickname mapping
+        first_name = parts[0]
+        if first_name in self.NICKNAME_MAP:
+            parts[0] = self.NICKNAME_MAP[first_name]
+
+        return " ".join(parts)
 
     def load_team_rankings(self, team_name: str) -> Dict[str, Any]:
         """Load team rankings from all ranking tables.
@@ -63,17 +119,21 @@ class StatAggregator:
         return rankings
 
     def load_player_stats(self, player_name: str, team_profiles: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Load player statistics from team profiles.
+        """Load player statistics from team profiles with fuzzy name matching.
 
         Checks BOTH passing and rushing_receiving tables and merges stats if player appears in both.
+        Uses nickname normalization to match variations like "Joshua" → "Josh".
 
         Args:
-            player_name: Player name to search for
+            player_name: Player name to search for (e.g., "Joshua Palmer")
             team_profiles: Loaded team profile data
 
         Returns:
             Dictionary with player stats or None if not found
         """
+        # Normalize the search name for fuzzy matching
+        search_name = self.normalize_player_name(player_name)
+
         # Load both tables
         passing_data = team_profiles.get("passing", {}).get("data", [])
         rush_rec_data = team_profiles.get("rushing_receiving", {}).get("data", [])
@@ -82,21 +142,27 @@ class StatAggregator:
         rush_rec_stats = None
         position = None
 
-        # Search in both tables
+        # Search in both tables with fuzzy matching
         for player in passing_data:
-            if player.get("name_display", "").lower() == player_name.lower():
+            profile_name = self.normalize_player_name(player.get("name_display", ""))
+            if profile_name == search_name:
                 passing_stats = player
                 position = player.get("pos", "QB")
                 break
 
         for player in rush_rec_data:
-            if player.get("name_display", "").lower() == player_name.lower():
+            profile_name = self.normalize_player_name(player.get("name_display", ""))
+            if profile_name == search_name:
                 rush_rec_stats = player
                 position = player.get("pos")
                 break
 
-        # If not found in either table, return None
+        # If not found in either table, print debug info and return None
         if not passing_stats and not rush_rec_stats:
+            print(f"⚠️  Player not found: '{player_name}' (normalized: '{search_name}')")
+            available_players = self._list_available_players(team_profiles)
+            if available_players:
+                print(f"    Available players in profile: {', '.join(available_players[:5])}{'...' if len(available_players) > 5 else ''}")
             return None
 
         # Merge stats from both tables
@@ -119,6 +185,40 @@ class StatAggregator:
             "stats": merged_stats,
             "position": position
         }
+
+    def _list_available_players(self, team_profile: Dict[str, Any]) -> List[str]:
+        """List all player names in profile for debugging.
+
+        Args:
+            team_profile: Team profile dictionary
+
+        Returns:
+            List of player names found in the profile
+        """
+        players = []
+
+        # Check passing table
+        passing_data = team_profile.get("passing", {}).get("data", [])
+        for player in passing_data:
+            name = player.get("name_display", "")
+            if name:
+                players.append(name)
+
+        # Check rushing/receiving table
+        rush_rec_data = team_profile.get("rushing_receiving", {}).get("data", [])
+        for player in rush_rec_data:
+            name = player.get("name_display", "")
+            if name and name not in players:  # Avoid duplicates
+                players.append(name)
+
+        # Check defense table (for defensive TDs, etc.)
+        defense_data = team_profile.get("defense_fumbles", {}).get("data", [])
+        for player in defense_data:
+            name = player.get("name_display", player.get("player", ""))
+            if name and name not in players:
+                players.append(name)
+
+        return players
 
     def load_team_profile(self, team_name: str) -> Dict[str, Any]:
         """Load complete team profile.

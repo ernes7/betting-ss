@@ -79,8 +79,17 @@ class BetValidator:
         team_stats = stats.get("team_stats", {})
         opp_stats = stats.get("opponent_stats", {})
 
+        # Check if stats dicts exist and are not None
         if not team_stats or not opp_stats:
-            return False, "Missing team stats"
+            return False, "Team stats are None or empty"
+
+        # Validate required fields exist (not just that dicts exist)
+        required_keys = ["points_per_g", "points_allowed_per_g"]
+        for key in required_keys:
+            if team_stats.get(key) is None:
+                return False, f"Missing {key} in team stats"
+            if opp_stats.get(key) is None:
+                return False, f"Missing {key} in opponent stats"
 
         return True, "Valid"
 

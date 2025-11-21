@@ -2,14 +2,20 @@
 
 from typing import Dict, Any, Optional
 import math
+import statistics
 
 
 class ProbabilityCalculator:
     """Statistical models for calculating true probabilities of bets."""
 
-    # Standard deviation multipliers for different variance levels
-    # NFL player stats typically have 25-35% coefficient of variation
-    STD_DEV_FACTOR = 0.30  # 30% of mean as standard deviation
+    # Base variance multipliers by stat type (replaced fixed 30%)
+    BASE_VARIANCE = {
+        "passing_yards": 0.28,    # QBs relatively consistent
+        "rushing_yards": 0.35,    # RBs high variance
+        "receiving_yards": 0.42,  # WRs highest variance
+        "receptions": 0.22,       # Receptions most consistent
+        "anytime_td": 0.85        # TDs extremely variable
+    }
 
     @staticmethod
     def calculate_probability(bet: Dict[str, Any], stats: Dict[str, Any]) -> float:
@@ -199,32 +205,95 @@ class ProbabilityCalculator:
             return ProbabilityCalculator.calculate_generic_milestone_prob(bet, stats)
 
     @staticmethod
-    def _get_defense_multiplier(opponent_def_rank: int) -> float:
-        """Get defense multiplier based on tier system.
+    def get_adaptive_std_dev(
+        market: str,
+        player_role: str,
+        spread: float,
+        base_avg: float
+    ) -> float:
+        """Calculate context-aware standard deviation.
+
+        Args:
+            market: Stat type (e.g., "passing_yards", "rushing_yards")
+            player_role: Player role classification ("WR1", "RB2", etc.)
+            spread: Game spread (positive = favorite)
+            base_avg: Player's average for this stat
+
+        Returns:
+            Standard deviation as actual value (not multiplier)
+        """
+        # Get base variance multiplier for this market
+        std_dev_mult = ProbabilityCalculator.BASE_VARIANCE.get(market, 0.30)
+
+        # Adjustment 1: Player role (starters more consistent)
+        if player_role in ["QB1", "RB1", "WR1", "TE1"]:
+            std_dev_mult *= 0.90  # 10% less variance
+        elif player_role in ["RB2", "WR2"]:
+            std_dev_mult *= 1.10  # 10% more variance
+        elif player_role in ["WR3", "RB3", "TE2"]:
+            std_dev_mult *= 1.25  # 25% more variance (boom/bust)
+
+        # Adjustment 2: Game spread (blowout risk increases variance)
+        abs_spread = abs(spread)
+        if abs_spread >= 14:
+            std_dev_mult *= 1.35  # 35% more variance in expected blowouts
+        elif abs_spread >= 10:
+            std_dev_mult *= 1.25  # 25% more variance
+        elif abs_spread >= 7:
+            std_dev_mult *= 1.15  # 15% more variance
+        elif abs_spread <= 3:
+            std_dev_mult *= 0.95  # 5% less variance in close games
+
+        # Bound multiplier between 0.18 and 0.50
+        std_dev_mult = max(0.18, min(0.50, std_dev_mult))
+
+        # Return actual std dev value
+        return base_avg * std_dev_mult
+
+    @staticmethod
+    def _get_defense_multiplier(opponent_def_rank: int, advanced_stats: Optional[Dict] = None) -> float:
+        """Get defense multiplier using continuous curve with advanced adjustments.
 
         Args:
             opponent_def_rank: Defense rank 1-32 (1 = best, 32 = worst)
+            advanced_stats: Optional advanced defense stats (pressure, sacks, etc.)
 
         Returns:
             Multiplier: <1.0 for good defenses, >1.0 for poor defenses
 
-        Tiers:
-            Elite (1-5):       0.75× (-25%)
-            Above Avg (6-12):  0.90× (-10%)
-            Average (13-20):   1.00× (neutral)
-            Below Avg (21-28): 1.15× (+15%)
-            Poor (29-32):      1.30× (+30%)
+        Formula: multiplier = 1.0 + ((rank - 16) × 0.0125)
+        Examples:
+            Rank 1:  0.8125 (-18.75%)
+            Rank 8:  0.9000 (-10%)
+            Rank 16: 1.0000 (neutral)
+            Rank 24: 1.1000 (+10%)
+            Rank 32: 1.2000 (+20%)
         """
-        if opponent_def_rank <= 5:    # Elite
-            return 0.75
-        elif opponent_def_rank <= 12: # Above average
-            return 0.90
-        elif opponent_def_rank <= 20: # Average
-            return 1.00
-        elif opponent_def_rank <= 28: # Below average
-            return 1.15
-        else:                         # Poor (29-32)
-            return 1.30
+        # Base multiplier: continuous curve (no tiers)
+        base_mult = 1.0 + ((opponent_def_rank - 16) * 0.0125)
+
+        # Apply advanced stat adjustments if available
+        if advanced_stats:
+            # Pressure rate adjustment (passing only)
+            pressure_rate = advanced_stats.get("pressure_pct", 0)
+            if pressure_rate:
+                # Remove '%' if present and convert to float
+                pressure_rate = float(str(pressure_rate).replace('%', ''))
+                # Each 1% above 22.5% avg = -1.5% production
+                pressure_adj = 1.0 - ((pressure_rate - 22.5) * 0.015)
+                base_mult *= max(0.85, min(1.15, pressure_adj))
+
+            # Sack rate adjustment (passing only)
+            sacks = advanced_stats.get("sacks", 0)
+            if sacks:
+                # Estimate sacks per game (assume ~9 games)
+                sacks_per_game = sacks / 9.0
+                # Each sack/game above 3.0 = -2% production
+                sack_adj = 1.0 - ((sacks_per_game - 3.0) * 0.02)
+                base_mult *= max(0.85, min(1.15, sack_adj))
+
+        # Bound final multiplier between 0.65 and 1.40
+        return max(0.65, min(1.40, base_mult))
 
     @staticmethod
     def calculate_passing_yards_prob(bet: Dict[str, Any], stats: Dict[str, Any]) -> float:
@@ -246,34 +315,34 @@ class ProbabilityCalculator:
         if player_avg == 0:
             return 0.0
 
-        # Adjust for opponent defense
+        # Adjust for opponent defense (with advanced stats if available)
         opponent_def_rank = stats.get("opponent_def_rank", 16)
-        # Better defense (rank 1) reduces production, worse defense (rank 32) increases
-        defense_multiplier = ProbabilityCalculator._get_defense_multiplier(opponent_def_rank)
+        advanced_def_stats = {
+            "pressure_pct": stats.get("opponent_pressure_rate", 22.5),
+            "sacks": stats.get("opponent_sack_total", 0)
+        }
+        defense_multiplier = ProbabilityCalculator._get_defense_multiplier(
+            opponent_def_rank,
+            advanced_stats=advanced_def_stats
+        )
 
         # Adjust for team offensive quality
         team_offense_rank = stats.get("team_offense_rank", 16)
         # Better offense (rank 1) increases production, worse offense (rank 32) decreases
         offense_multiplier = 1.0 + ((16 - team_offense_rank) * 0.015)  # ±1.5% per rank
 
-        # Adjust for opponent pressure rate (from advanced_defense)
-        pressure_rate = stats.get("opponent_pressure_rate", 22.5)  # League avg ~22.5%
-        # High pressure (35%+) reduces yards, low pressure (15%-) increases yards
-        pressure_multiplier = 1.0 - ((pressure_rate - 22.5) * 0.01)  # ±1% per % above/below average
+        # Apply adjustments (pressure & sacks now handled in defense_multiplier)
+        adjusted_avg = player_avg * defense_multiplier * offense_multiplier
 
-        # Adjust for opponent sacks (indicates pass rush effectiveness)
-        sack_total = stats.get("opponent_sack_total", 0)
-        # Teams with 30+ sacks are elite pass rushers, 15- sacks are poor
-        sacks_per_game = sack_total / 9  # Assume 9 games played
-        sack_multiplier = 1.0 - ((sacks_per_game - 3.0) * 0.02)  # ±2% per sack above/below 3/game
-
-        # Apply all adjustments
-        total_multiplier = (defense_multiplier * offense_multiplier *
-                          pressure_multiplier * sack_multiplier)
-        adjusted_avg = player_avg * total_multiplier
-
-        # Standard deviation (typically 25-30% of mean for passing yards)
-        std_dev = adjusted_avg * ProbabilityCalculator.STD_DEV_FACTOR
+        # Adaptive standard deviation based on context
+        player_role = stats.get("player_role", "QB1")  # Assume QB1 if not specified
+        spread_line = stats.get("spread_line", 0)  # Game spread (fixed: use spread_line consistently)
+        std_dev = ProbabilityCalculator.get_adaptive_std_dev(
+            market="passing_yards",
+            player_role=player_role,
+            spread=spread_line,
+            base_avg=adjusted_avg
+        )
 
         # Calculate probability using normal distribution
         over_prob = ProbabilityCalculator._calculate_over_probability(line, adjusted_avg, std_dev)
@@ -312,8 +381,14 @@ class ProbabilityCalculator:
 
         adjusted_avg = player_avg * defense_multiplier * offense_multiplier * game_script_multiplier
 
-        # Rushing yards have higher variance (30-35% of mean)
-        std_dev = adjusted_avg * 0.32
+        # Adaptive standard deviation for rushing yards
+        player_role = stats.get("player_role", "RB1" if position == "RB" else "QB1")
+        std_dev = ProbabilityCalculator.get_adaptive_std_dev(
+            market="rushing_yards",
+            player_role=player_role,
+            spread=spread_line,
+            base_avg=adjusted_avg
+        )
 
         over_prob = ProbabilityCalculator._calculate_over_probability(line, adjusted_avg, std_dev)
 
@@ -366,8 +441,14 @@ class ProbabilityCalculator:
                           game_script_multiplier)
         adjusted_avg = player_avg * total_multiplier
 
-        # Receiving yards variance (28-33% of mean)
-        std_dev = adjusted_avg * 0.30
+        # Adaptive standard deviation for receiving yards
+        player_role = stats.get("player_role", "WR1" if position == "WR" else ("TE1" if position == "TE" else "RB2"))
+        std_dev = ProbabilityCalculator.get_adaptive_std_dev(
+            market="receiving_yards",
+            player_role=player_role,
+            spread=spread_line,
+            base_avg=adjusted_avg
+        )
 
         over_prob = ProbabilityCalculator._calculate_over_probability(line, adjusted_avg, std_dev)
 
@@ -382,12 +463,20 @@ class ProbabilityCalculator:
         player_avg = stats.get("player_averages", {}).get("rec_per_g", 0)
         line = bet.get("line", 5)
         side = bet.get("side", "over")
+        position = stats.get("position", "")
 
         if player_avg == 0:
             return 0.0
 
-        # Receptions are more consistent (20-25% variance)
-        std_dev = player_avg * 0.22
+        # Adaptive standard deviation for receptions
+        player_role = stats.get("player_role", "WR1" if position == "WR" else ("TE1" if position == "TE" else "RB2"))
+        spread_line = stats.get("spread_line", 0)
+        std_dev = ProbabilityCalculator.get_adaptive_std_dev(
+            market="receptions",
+            player_role=player_role,
+            spread=spread_line,
+            base_avg=player_avg
+        )
 
         over_prob = ProbabilityCalculator._calculate_over_probability(line, player_avg, std_dev)
 
