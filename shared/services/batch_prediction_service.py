@@ -17,6 +17,7 @@ from shared.repositories.prediction_repository import PredictionRepository
 from shared.repositories.odds_repository import OddsRepository
 from shared.config import get_data_path
 from shared.utils.timezone_utils import get_eastern_now
+from shared.utils.odds_utils import filter_odds_by_range
 
 
 class BatchPredictionService:
@@ -278,6 +279,9 @@ class BatchPredictionService:
             odds_data = self.odds_repo.load_odds(game_date, away_abbr, home_abbr)
             if not odds_data:
                 return {"success": False, "error": "Odds not found"}
+
+            # Filter odds to acceptable range (-200 to +150 for higher hit rate)
+            odds_data = filter_odds_by_range(odds_data, min_odds=-200, max_odds=150)
 
             # 1. Run EV Calculator
             ev_start = time.time()

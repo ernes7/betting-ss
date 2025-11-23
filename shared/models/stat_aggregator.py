@@ -53,19 +53,47 @@ class StatAggregator:
         # Initialize DataLoader for cached rankings
         self.data_loader = DataLoader(sport_config, str(base_dir))
 
-    def normalize_player_name(self, name: str) -> str:
+    def strip_suffix(self, name: str) -> str:
+        """Strip common suffixes from player names.
+
+        Args:
+            name: Player name (e.g., "Brian Thomas Jr.")
+
+        Returns:
+            Name without suffix (e.g., "Brian Thomas")
+        """
+        if not name:
+            return ""
+
+        # Common suffixes to remove
+        suffixes = [' jr.', ' jr', ' sr.', ' sr', ' ii', ' iii', ' iv', ' v']
+        name_lower = name.lower().strip()
+
+        for suffix in suffixes:
+            if name_lower.endswith(suffix):
+                # Remove suffix and return with original case pattern
+                return name[:len(name) - len(suffix)].strip()
+
+        return name
+
+    def normalize_player_name(self, name: str, strip_suffixes: bool = False) -> str:
         """Normalize player name for matching.
 
         Handles nicknames, case, and common variations.
 
         Args:
             name: Player name (e.g., "Joshua Palmer", "Josh Palmer")
+            strip_suffixes: If True, remove Jr/Sr/II/III/IV suffixes before normalizing
 
         Returns:
             Normalized lowercase name with nickname substitutions
         """
         if not name:
             return ""
+
+        # Optionally strip suffixes first
+        if strip_suffixes:
+            name = self.strip_suffix(name)
 
         # Convert to lowercase for comparison
         name_lower = name.lower().strip()
@@ -122,18 +150,18 @@ class StatAggregator:
         """Load player statistics from team profiles with fuzzy name matching.
 
         Checks BOTH passing and rushing_receiving tables and merges stats if player appears in both.
-        Uses nickname normalization to match variations like "Joshua" → "Josh".
+        Uses multi-level matching strategy:
+        1. Exact match with nickname normalization
+        2. Match without suffixes (Jr., Sr., II, III, IV)
+        3. If still not found, print debug info
 
         Args:
-            player_name: Player name to search for (e.g., "Joshua Palmer")
+            player_name: Player name to search for (e.g., "Joshua Palmer", "Brian Thomas Jr.")
             team_profiles: Loaded team profile data
 
         Returns:
             Dictionary with player stats or None if not found
         """
-        # Normalize the search name for fuzzy matching
-        search_name = self.normalize_player_name(player_name)
-
         # Load both tables
         passing_data = team_profiles.get("passing", {}).get("data", [])
         rush_rec_data = team_profiles.get("rushing_receiving", {}).get("data", [])
@@ -141,29 +169,59 @@ class StatAggregator:
         passing_stats = None
         rush_rec_stats = None
         position = None
+        match_method = None
 
-        # Search in both tables with fuzzy matching
+        # LEVEL 1: Try exact match with nickname normalization
+        search_name = self.normalize_player_name(player_name, strip_suffixes=False)
+
         for player in passing_data:
-            profile_name = self.normalize_player_name(player.get("name_display", ""))
+            profile_name = self.normalize_player_name(player.get("name_display", ""), strip_suffixes=False)
             if profile_name == search_name:
                 passing_stats = player
                 position = player.get("pos", "QB")
+                match_method = "exact"
                 break
 
         for player in rush_rec_data:
-            profile_name = self.normalize_player_name(player.get("name_display", ""))
+            profile_name = self.normalize_player_name(player.get("name_display", ""), strip_suffixes=False)
             if profile_name == search_name:
                 rush_rec_stats = player
                 position = player.get("pos")
+                match_method = "exact"
                 break
+
+        # LEVEL 2: If not found, try without suffixes
+        if not passing_stats and not rush_rec_stats:
+            search_name_no_suffix = self.normalize_player_name(player_name, strip_suffixes=True)
+
+            for player in passing_data:
+                profile_name = self.normalize_player_name(player.get("name_display", ""), strip_suffixes=True)
+                if profile_name == search_name_no_suffix:
+                    passing_stats = player
+                    position = player.get("pos", "QB")
+                    match_method = "no_suffix"
+                    break
+
+            for player in rush_rec_data:
+                profile_name = self.normalize_player_name(player.get("name_display", ""), strip_suffixes=True)
+                if profile_name == search_name_no_suffix:
+                    rush_rec_stats = player
+                    position = player.get("pos")
+                    match_method = "no_suffix"
+                    break
 
         # If not found in either table, print debug info and return None
         if not passing_stats and not rush_rec_stats:
-            print(f"⚠️  Player not found: '{player_name}' (normalized: '{search_name}')")
+            print(f"⚠️  Player not found: '{player_name}'")
+            print(f"    Tried: '{search_name}' (exact) and '{self.normalize_player_name(player_name, strip_suffixes=True)}' (no suffix)")
             available_players = self._list_available_players(team_profiles)
             if available_players:
                 print(f"    Available players in profile: {', '.join(available_players[:5])}{'...' if len(available_players) > 5 else ''}")
             return None
+
+        # Debug: Show when suffix matching was used
+        if match_method == "no_suffix":
+            print(f"✓ Matched '{player_name}' using suffix-stripped matching")
 
         # Merge stats from both tables
         merged_stats = {}
