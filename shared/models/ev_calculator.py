@@ -6,7 +6,6 @@ from shared.models.bet_parser import BetParser
 from shared.models.stat_aggregator import StatAggregator
 from shared.models.probability_calculator import ProbabilityCalculator
 from shared.models.bet_validator import BetValidator
-from shared.models.ev_calibrator import EVCalibrator
 from shared.utils.player_filter import PlayerFilter
 from shared.utils.player_game_log import PlayerGameLog
 from nfl.teams import PFR_ABBR_TO_NAME
@@ -42,21 +41,7 @@ class EVCalculator:
         self.stat_aggregator = StatAggregator(sport_config, base_dir)
         self.prob_calculator = ProbabilityCalculator()
 
-        # Initialize calibrator with historical data
-        # Build path to analysis directory (e.g., nfl/data/analysis)
-        if base_dir:
-            analysis_dir = Path(base_dir) / sport_config.sport_name / "data" / "analysis"
-        else:
-            analysis_dir = Path(sport_config.sport_name) / "data" / "analysis"
-
-        # TEMPORARILY DISABLED: Calibrator is over-correcting (reducing probabilities by 50-70%)
-        # TODO: Fix calibrator to be less aggressive, then re-enable
-        # try:
-        #     self.calibrator = EVCalibrator(str(analysis_dir))
-        # except Exception:
-        #     # If calibration fails, disable it (will use conservative adjustment only)
-        #     self.calibrator = None
-        self.calibrator = None  # Disabled - over-calibrating
+        self.calibrator = None
 
         # Extract team info using PFR abbreviations
         teams = odds_data.get("teams", {})

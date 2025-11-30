@@ -1,13 +1,11 @@
 """Fetch results CLI commands for NFL - Optimized with programmatic bet checking."""
 
-from datetime import datetime
-
 import inquirer
 from rich.console import Console
 from rich.panel import Panel
 
 # Import shared services
-from shared.services import MetadataService, PredictionsMetadataService
+from shared.services import PredictionsMetadataService
 from shared.repositories import ResultsRepository, PredictionRepository, AnalysisRepository, EVResultsRepository
 from shared.utils.console_utils import print_header, print_cancelled
 from shared.utils.timezone_utils import get_eastern_now
