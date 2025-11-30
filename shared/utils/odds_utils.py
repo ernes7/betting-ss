@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional, List
 def filter_odds_by_range(
     odds_data: Dict[str, Any],
     min_odds: int = -200,
-    max_odds: int = 150
+    max_odds: int = -105
 ) -> Dict[str, Any]:
     """Filter odds data to only include odds within specified range.
 
@@ -16,7 +16,7 @@ def filter_odds_by_range(
     Args:
         odds_data: Full odds data dictionary from JSON file
         min_odds: Minimum American odds (e.g., -200)
-        max_odds: Maximum American odds (e.g., +150)
+        max_odds: Maximum American odds (e.g., -105)
 
     Returns:
         Filtered odds_data dictionary with out-of-range odds removed

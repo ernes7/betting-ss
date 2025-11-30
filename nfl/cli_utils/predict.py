@@ -29,6 +29,7 @@ from shared.utils.console_utils import (
 )
 from shared.utils.validation_utils import is_valid_inquirer_date
 from shared.utils.timezone_utils import get_eastern_now
+from shared.utils.odds_utils import filter_odds_by_range
 from shared.config import get_metadata_path, get_file_path
 
 # Import sport factory and scrapers
@@ -392,6 +393,10 @@ def predict_game():
     print_info("📊 Loading betting odds (required for EV analysis)...")
     odds_data = odds_service.load_odds_for_game(game_date, team_a_pfr, team_b_pfr, home_pfr)
 
+    # Filter odds to acceptable range (-150 to +199)
+    if odds_data:
+        odds_data = filter_odds_by_range(odds_data, min_odds=-150, max_odds=199)
+
     if not odds_data:
         console.print()
         error_text = "[bold red]ERROR: Odds required for EV+ analysis[/bold red]\n\n"
@@ -720,6 +725,9 @@ def predict_all_games():
 
             if not odds_data:
                 raise Exception("Odds file not found despite schedule indicating odds_fetched=true")
+
+            # Filter odds to acceptable range (-200 to -105 for higher hit rate)
+            odds_data = filter_odds_by_range(odds_data, min_odds=-200, max_odds=-105)
 
             # Generate prediction
             result = nfl_sport.predictor.generate_predictions(

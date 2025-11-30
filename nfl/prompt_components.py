@@ -63,4 +63,5 @@ RULE: If betting on a blowout win, favor the WINNER's rushing props and LOSER's 
 
     important_notes = """IMPORTANT PRE-GAME VERIFICATION CHECKLIST:
  1. Check injury_report: Exclude all injured players from prop bets
- 2. Respect elite defenses: Top 5 defenses suppress featured player production"""
+ 2. Respect elite defenses: Top 5 defenses suppress featured player production
+ 3. Prioritize safe, high-usage props and avoid volatile alt-lines or committee running backs"""

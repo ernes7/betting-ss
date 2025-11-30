@@ -7,7 +7,12 @@ from shared.models.stat_aggregator import StatAggregator
 from shared.models.probability_calculator import ProbabilityCalculator
 from shared.models.bet_validator import BetValidator
 from shared.models.ev_calibrator import EVCalibrator
+from shared.utils.player_filter import PlayerFilter
+from shared.utils.player_game_log import PlayerGameLog
 from nfl.teams import PFR_ABBR_TO_NAME
+
+# Minimum games required for recent form calculation
+MIN_GAMES_REQUIRED = 3
 
 
 class EVCalculator:
@@ -68,6 +73,13 @@ class EVCalculator:
         self.away_rankings = self.stat_aggregator.load_team_rankings(self.away_team)
         self.home_rankings = self.stat_aggregator.load_team_rankings(self.home_team)
 
+        # Initialize player filter (filters to top players by position)
+        # Pass stat_aggregator for name normalization (handles nicknames, suffixes, etc.)
+        self.player_filter = PlayerFilter(self.home_profile, self.away_profile, self.stat_aggregator)
+
+        # Initialize player game log utility for recent form (last 5 games)
+        self.player_game_log = PlayerGameLog(sport_config.sport_name, base_dir)
+
         # Validate that data loaded successfully
         if not self.away_profile or not self.home_profile:
             print(f"⚠️  Warning: Profiles missing for {self.away_team} or {self.home_team}")
@@ -101,6 +113,25 @@ class EVCalculator:
         # Parse all bets
         all_bets = self.bet_parser.parse_all_bets(self.odds_data)
         print(f"[DEBUG] Parsed {len(all_bets)} bets from odds")
+
+        # Filter player props to only include top players by position
+        filtered_bets = []
+        for bet in all_bets:
+            bet_type = bet.get("bet_type")
+
+            # Always include game-level bets (moneyline, spread, total)
+            if bet_type in ["moneyline", "spread", "total"]:
+                filtered_bets.append(bet)
+
+            # Filter player props to only top performers
+            elif bet_type == "player_prop":
+                player = bet.get("player", "")
+                team = bet.get("team", "")
+                if self.player_filter.is_player_eligible(player, team):
+                    filtered_bets.append(bet)
+
+        print(f"[DEBUG] Filtered to {len(filtered_bets)} bets (removed {len(all_bets) - len(filtered_bets)} bets from bench/backup players)")
+        all_bets = filtered_bets
 
         # Calculate EV for each bet
         bets_with_ev = []
@@ -315,11 +346,33 @@ class EVCalculator:
                 print(f"⚠️  Unknown team '{team_side}' for {player_name} (expected AWAY/HOME, {away_abbr}/{home_abbr}, or {away_pfr_abbr}/{home_pfr_abbr})")
                 return stats
 
-            # Load player stats
+            # Load player stats from season profile (needed for position, validation)
             player_stats = self.stat_aggregator.load_player_stats(player_name, player_profile)
 
             if player_stats:
-                stats["player_averages"] = self.stat_aggregator.get_player_averages(player_stats)
+                # Get team abbreviation for game log lookup
+                if team_side == "AWAY" or team_side == away_abbr or team_side == away_pfr_abbr:
+                    player_team_abbr = away_abbr  # Use DraftKings abbr (e.g., "DET")
+                else:
+                    player_team_abbr = home_abbr
+
+                # Try to get recent game stats (last 5 games) from boxscore data
+                recent_games = self.player_game_log.get_player_recent_games(
+                    player_name,
+                    player_team_abbr,
+                    num_games=5
+                )
+
+                if len(recent_games) >= MIN_GAMES_REQUIRED:
+                    # Use ONLY recent form (last 5 games) for player props
+                    stats["player_averages"] = self.player_game_log.calculate_recent_averages(recent_games)
+                    stats["recent_games_count"] = len(recent_games)
+                    stats["using_recent_form"] = True
+                else:
+                    # Insufficient sample size - skip this bet
+                    print(f"⚠️  Skipping {player_name}: only {len(recent_games)} games found (need {MIN_GAMES_REQUIRED}+)")
+                    return stats  # Return without player_averages to trigger validation failure
+
                 stats["position"] = player_stats.get("position", "")
                 stats["player_stats"] = player_stats  # Store for validator
                 stats["spread_line"] = spread_line  # Game script context
@@ -535,11 +588,13 @@ class EVCalculator:
 
             # Add context info
             def_rank = stats.get("opponent_def_rank", 16)
+            recent_games = stats.get("recent_games_count", 0)
 
-            context = f" vs ##{def_rank} defense"
+            context = f" vs #{def_rank} defense"
+            form_info = f" (last {recent_games} games)" if recent_games > 0 else " (season avg)"
 
             if avg_val > 0:
-                return f"{player} averages {avg_val:.1f} {unit}/game{context}. Line: {line}"
+                return f"{player} averages {avg_val:.1f} {unit}/game{form_info}{context}. Line: {line}"
             else:
                 return f"{player} has no stats in {market}"
 

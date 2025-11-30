@@ -195,13 +195,11 @@ def parse_todays_game_links(html_content: str) -> list[dict]:
             continue
         seen_event_ids.add(event_id)
 
-        # Build full URL with SGP mode
+        # Build full URL (sgpmode removed - it breaks some games and data is identical without it)
         if href.startswith('http'):
-            base_url = href
+            game_url = href
         else:
-            base_url = f"https://sportsbook.draftkings.com{href}"
-
-        sgp_url = f"{base_url}?sgpmode=true" if '?' not in base_url else f"{base_url}&sgpmode=true"
+            game_url = f"https://sportsbook.draftkings.com{href}"
 
         # Parse team abbreviations from slug for display
         # Example slug: "atl-falcons-%40-ind-colts" -> "ATL @ IND"
@@ -229,7 +227,7 @@ def parse_todays_game_links(html_content: str) -> list[dict]:
                 start_time_str = "LIVE" if live_icon else "In Progress"
 
         games.append({
-            'url': sgp_url,
+            'url': game_url,
             'slug': slug,
             'event_id': event_id,
             'teams_display': teams_display,
@@ -346,23 +344,50 @@ def fetch_single_game_odds(game_url: str, skip_if_exists: bool = True) -> dict:
             - 'error': Error message (if failed)
     """
     try:
-        # Fetch HTML from game URL
-        scraper = WebScraper(headless=True, timeout=30000)
-        with scraper.launch() as page:
-            scraper.navigate_and_wait(page, game_url, wait_time=3000)
-            game_html_content = page.content()
+        # Fetch stadium data from DraftKings using page.evaluate()
+        # DraftKings populates window.__INITIAL_STATE__.stadiumEventData via JS after page load
+        from playwright.sync_api import sync_playwright
 
-        # Save HTML to temp file for odds scraper
-        temp_html_path = Path("nfl/data/odds") / "temp_dk_page.html"
-        temp_html_path.parent.mkdir(parents=True, exist_ok=True)
-        temp_html_path.write_text(game_html_content, encoding='utf-8')
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=['--disable-blink-features=AutomationControlled']
+            )
+            context = browser.new_context(
+                user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                viewport={'width': 1920, 'height': 1080}
+            )
+            page = context.new_page()
+            try:
+                # Remove sgpmode parameter which breaks some games (data is identical without it)
+                clean_url = re.sub(r'[?&]sgpmode=true', '', game_url).rstrip('?')
+                page.goto(clean_url, wait_until='domcontentloaded', timeout=30000)
 
-        # Extract odds
+                # Poll for data instead of fixed wait (data loads 3-15 seconds, varies)
+                stadium_data = None
+                for _ in range(15):  # Try for up to 30 seconds
+                    page.wait_for_timeout(2000)
+                    stadium_data = page.evaluate("""() => {
+                        const state = window.__INITIAL_STATE__;
+                        if (state && state.stadiumEventData && state.stadiumEventData.events?.length > 0) {
+                            return state.stadiumEventData;
+                        }
+                        return null;
+                    }""")
+                    if stadium_data:
+                        break
+            finally:
+                browser.close()
+
+        if not stadium_data:
+            raise ValueError("No stadium data found in JavaScript state")
+
+        if not stadium_data.get('events'):
+            raise ValueError("No event data found in stadium data")
+
+        # Extract odds directly from dict
         odds_scraper = NFLOddsScraper()
-        odds_data = odds_scraper.extract_odds(str(temp_html_path))
-
-        # Clean up temp file
-        temp_html_path.unlink()
+        odds_data = odds_scraper.extract_odds_from_data(stadium_data)
 
         # Check if we should skip (only after extraction to get team info)
         if skip_if_exists:

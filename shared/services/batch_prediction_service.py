@@ -4,6 +4,7 @@ import os
 import json
 import re
 import time
+from pathlib import Path
 from typing import Dict, List, Tuple
 from datetime import datetime
 from tqdm import tqdm
@@ -108,14 +109,16 @@ class BatchPredictionService:
         with open(schedule_path, 'r') as f:
             schedule = json.load(f)
 
-        # Filter games: not started + odds fetched + valid team abbreviations
-        eligible_games = [
-            game for game in schedule.get("games", [])
-            if (not game.get("has_started", True)
-                and game.get("odds_fetched", False)
-                and game.get("teams", {}).get("away", {}).get("pfr_abbr")
-                and game.get("teams", {}).get("home", {}).get("pfr_abbr"))
-        ]
+        # Filter games: check if odds file exists on disk (more reliable than odds_fetched flag)
+        odds_dir = Path(f"nfl/data/odds/{game_date}")
+        eligible_games = []
+        for game in schedule.get("games", []):
+            away = game.get("teams", {}).get("away", {}).get("pfr_abbr")
+            home = game.get("teams", {}).get("home", {}).get("pfr_abbr")
+            if away and home:
+                odds_file = odds_dir / f"{home}_{away}.json"
+                if odds_file.exists():
+                    eligible_games.append(game)
 
         if not eligible_games:
             return {
@@ -280,8 +283,8 @@ class BatchPredictionService:
             if not odds_data:
                 return {"success": False, "error": "Odds not found"}
 
-            # Filter odds to acceptable range (-200 to +150 for higher hit rate)
-            odds_data = filter_odds_by_range(odds_data, min_odds=-200, max_odds=150)
+            # Filter odds to acceptable range (-150 to +199)
+            odds_data = filter_odds_by_range(odds_data, min_odds=-150, max_odds=199)
 
             # 1. Run EV Calculator
             ev_start = time.time()

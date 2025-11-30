@@ -109,11 +109,14 @@ CRITICAL DATA USAGE RULES (MUST FOLLOW):
 1. ⛔ NEVER use statistics, rankings, or data that are NOT explicitly provided in the DATA section below
 2. ⛔ NEVER estimate, approximate, or make up any defensive stats (rush yards allowed, pass yards allowed, YPC allowed, rankings, etc.)
 3. ⛔ NEVER reference rankings, percentages, or league positions unless they appear in the provided JSON data
-4. ✅ ONLY use statistics that are directly visible in the RANKING STATS or DETAILED PROFILE sections
-5. ✅ If defensive data is missing for a team, DO NOT mention defensive matchups for that team
-6. ✅ Every statistical claim MUST be traceable to a specific field in the provided JSON data
-7. ✅ When citing stats in reasoning, reference the exact source (e.g., "rushing_offense shows 117.7 rush_yds_per_g")
-8. ✅ For rankings: Use fields ending in "_rank" (e.g., "points_per_g_rank": 5 means 5th in league). Lower rank = better (1 = best, 32 = worst)
+4. ⛔ NEVER suggest bets that are NOT in the "CURRENT BETTING ODDS" section - ONLY use bets with exact odds from the provided DraftKings data
+5. ⛔ NEVER invent bet lines, odds values, or bet types that do not appear in the odds JSON (e.g., no team totals unless explicitly provided)
+6. ✅ ONLY use statistics that are directly visible in the RANKING STATS or DETAILED PROFILE sections
+7. ✅ If defensive data is missing for a team, DO NOT mention defensive matchups for that team
+8. ✅ Every statistical claim MUST be traceable to a specific field in the provided JSON data
+9. ✅ Every bet MUST have corresponding odds data in the CURRENT BETTING ODDS JSON - verify the line and odds exist before suggesting
+10. ✅ When citing stats in reasoning, reference the exact source (e.g., "rushing_offense shows 117.7 rush_yds_per_g")
+11. ✅ For rankings: Use fields ending in "_rank" (e.g., "points_per_g_rank": 5 means 5th in league). Lower rank = better (1 = best, 32 = worst)
 
 ADVANCED PLAYER PROP ANALYSIS (use provided data intelligently):
 

@@ -125,17 +125,19 @@ class BetValidator:
             # Unknown market, allow it
             return True
 
-        # Check if player has this stat and it's > 0
+        # Check if player has this stat and meaningful production
         avg_value = player_averages.get(required_field, 0)
 
-        # For anytime_td, check if player has ANY touchdowns
+        # For anytime_td, check if player has receiving/rushing usage (not TD history)
+        # Players with 0 TDs but high usage (3+ rec/game or 30+ rush yds/game) can still score
         if market == "anytime_td":
-            rush_td = player_averages.get("rush_td_per_g", 0)
-            rec_td = player_averages.get("rec_td_per_g", 0)
-            pass_td = player_averages.get("pass_td_per_g", 0)
-            return (rush_td + rec_td + pass_td) > 0
+            rec_pg = player_averages.get("rec_per_g", 0)
+            rush_ypg = player_averages.get("rush_yds_per_g", 0)
+            # Allow if player has meaningful offensive touches
+            return rec_pg >= 3.0 or rush_ypg >= 30.0
 
-        return avg_value > 0
+        # Relax from > 0 to >= 0.1 to allow minimal but real production
+        return avg_value >= 0.1
 
     @staticmethod
     def _safe_int(value: Any) -> int:

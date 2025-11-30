@@ -92,13 +92,29 @@ class NFLOddsScraper:
         print("  Parsing JavaScript data...")
         stadium_data = dk_json_parser.extract_stadium_data(html_content)
 
+        return self.extract_odds_from_data(stadium_data)
+
+    def extract_odds_from_data(self, stadium_data: dict) -> dict[str, Any]:
+        """Extract odds from stadiumEventData dict directly.
+
+        Use this when you have the data from page.evaluate() instead of HTML.
+
+        Args:
+            stadium_data: The stadiumEventData dictionary from DraftKings
+
+        Returns:
+            Dictionary with game info and odds
+
+        Raises:
+            ValueError: If data extraction fails
+        """
         # Parse the three main arrays
         events = stadium_data.get("events", [])
         markets = stadium_data.get("markets", [])
         selections = stadium_data.get("selections", [])
 
         if not events:
-            raise ValueError("No event data found in HTML")
+            raise ValueError("No event data found")
 
         event = events[0]  # Should be only one event
 

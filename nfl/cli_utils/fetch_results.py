@@ -1,10 +1,6 @@
-"""Fetch results CLI commands for NFL - Refactored with services."""
+"""Fetch results CLI commands for NFL - Optimized with programmatic bet checking."""
 
-import time
-import select
-import sys
 from datetime import datetime
-from collections import defaultdict
 
 import inquirer
 from rich.console import Console
@@ -12,68 +8,23 @@ from rich.panel import Panel
 
 # Import shared services
 from shared.services import MetadataService, PredictionsMetadataService
-from shared.repositories import ResultsRepository
+from shared.repositories import ResultsRepository, PredictionRepository, AnalysisRepository, EVResultsRepository
 from shared.utils.console_utils import print_header, print_cancelled
 from shared.utils.timezone_utils import get_eastern_now
+from shared.utils.bet_result_checker import check_bets
 from shared.config import get_metadata_path
 
 from nfl.nfl_config import NFLConfig
 from nfl.nfl_results_fetcher import NFLResultsFetcher
-from nfl.nfl_analyzer import NFLAnalyzer
 from nfl.teams import DK_TO_PFR_ABBR
 
 # Initialize services
 console = Console()
 predictions_metadata_service = PredictionsMetadataService(get_metadata_path("nfl", "predictions"))
 results_repo = ResultsRepository("nfl")
-
-
-def wait_with_countdown(seconds: int, next_game_info: str, current: int, total: int):
-    """Wait with interactive countdown timer that can be skipped.
-
-    Args:
-        seconds: Number of seconds to wait
-        next_game_info: Description of next game to process
-        current: Current game number (completed)
-        total: Total number of games
-    """
-    console.print()
-    console.print(f"[bold green]✅ Game {current}/{total} complete[/bold green]")
-    console.print()
-    console.print(Panel.fit(
-        f"[bold yellow]⏸️  Rate Limit Delay ({seconds}s)[/bold yellow]\n\n"
-        f"[dim]Next up:[/dim] {next_game_info}\n\n"
-        f"[dim][Press Enter to skip wait, or wait for countdown][/dim]",
-        border_style="yellow"
-    ))
-
-    start_time = time.time()
-
-    while True:
-        elapsed = time.time() - start_time
-        remaining = int(seconds - elapsed)
-
-        if remaining <= 0:
-            break
-
-        # Check if Enter was pressed (non-blocking)
-        if sys.platform != 'win32':
-            # Unix-like systems
-            i, o, e = select.select([sys.stdin], [], [], 0.1)
-            if i:
-                sys.stdin.readline()
-                console.print("\n[cyan]⏭️  Skipping wait...[/cyan]")
-                break
-        else:
-            # Windows fallback - just wait
-            time.sleep(0.1)
-
-        # Update countdown display with simple counter
-        console.print(f"\r  ⏱️  {remaining}s remaining", end="", style="dim")
-
-        time.sleep(0.1)
-
-    console.print("\n")
+prediction_repo = PredictionRepository("nfl")  # For AI predictions (_ai.json)
+ev_results_repo = EVResultsRepository("nfl")   # For EV predictions (_ev.json)
+analysis_repo = AnalysisRepository("nfl")
 
 
 def fetch_game_result_with_fallback(config, fetcher, game_date, home_team_abbr_dk):
@@ -229,10 +180,9 @@ def fetch_results():
         print_cancelled()
         return
 
-    # Initialize fetcher and analyzer
+    # Initialize fetcher (no AI analyzer needed - using programmatic checker)
     config = NFLConfig()
     fetcher = NFLResultsFetcher(config)
-    analyzer = NFLAnalyzer(config)
 
     # Process each game
     console.print()
@@ -240,7 +190,6 @@ def fetch_results():
 
     success_count = 0
     failed_count = 0
-    anthropic_api_called = False
 
     for i, game in enumerate(games_to_fetch, 1):
         game_meta = game["meta"]
@@ -251,8 +200,19 @@ def fetch_results():
 
         console.print(f"[{i}/{len(games_to_fetch)}] {teams[0]} vs {teams[1]} ({game_date})")
 
+        # Extract team abbreviations from game_key (needed for both results and analysis)
+        # game_key format: "{date}_{home_abbr}_{away_abbr}" (e.g., "2025-11-02_cin_chi")
+        parts = game_key.split("_")
+        if parts[0] == game_date:
+            home_abbr_extracted = parts[1] if len(parts) > 1 else home_abbr
+            away_abbr = parts[2] if len(parts) > 2 else "unknown"
+        else:
+            home_abbr_extracted = home_abbr
+            away_abbr = "unknown"
+
         try:
             # Fetch game results from PFR (only if needed)
+            result_data = None
             if game.get("needs_results", True):
                 console.print("  ├─ Fetching game results...", style="dim")
 
@@ -266,18 +226,6 @@ def fetch_results():
 
                 # Save results using repository
                 console.print("  ├─ Saving game results...", style="dim")
-                # Extract team abbreviations from game_key
-                # game_key format: "{date}_{home_abbr}_{away_abbr}" (e.g., "2025-11-02_cin_chi")
-                parts = game_key.split("_")
-                if parts[0] == game_date:
-                    # Remove date prefix - remaining parts are home and away abbrs
-                    home_abbr_extracted = parts[1] if len(parts) > 1 else home_abbr
-                    away_abbr = parts[2] if len(parts) > 2 else "unknown"
-                else:
-                    # Fallback: use metadata
-                    home_abbr_extracted = home_abbr
-                    away_abbr = "unknown"
-
                 results_repo.save_result(game_date, away_abbr, home_abbr_extracted, result_data)
 
                 # Update metadata using service
@@ -287,67 +235,78 @@ def fetch_results():
             else:
                 console.print("  ├─ [dim]Results already fetched, skipping...[/dim]")
 
-            # Generate Claude AI analysis (only if needed)
+            # Programmatic bet analysis (no AI needed)
             if game.get("needs_analysis", True):
-                console.print("  ├─ Analyzing with Claude AI...", style="dim")
+                console.print("  ├─ Checking bet results...", style="dim")
 
                 try:
-                    # Check which prediction types exist
-                    prediction_types = analyzer.check_prediction_types(game_key, game_meta)
-                    has_ai = prediction_types.get("has_ai", False)
-                    has_ev = prediction_types.get("has_ev", False)
+                    # Load result data (either from just-fetched or previously saved)
+                    if not game.get("needs_results", True):
+                        # Load previously saved results
+                        result_data = results_repo.load_result(game_date, away_abbr, home_abbr_extracted)
+                        if not result_data:
+                            console.print("  └─ [red]✗ Could not load saved results[/red]")
+                            failed_count += 1
+                            continue
 
-                    # Run appropriate analysis based on what exists
-                    if has_ai and has_ev:
-                        console.print("  ├─ [cyan]Both AI & EV predictions found - analyzing both systems[/cyan]", style="dim")
-                        analysis_data = analyzer.generate_dual_analysis(game_key, game_meta)
-                        anthropic_api_called = True
+                    # Try to load EV prediction first, then AI prediction
+                    prediction_data = None
+                    prediction_type_used = None
 
-                        # Display P/L summary for both systems
-                        ai_summary = analysis_data.get('ai_system', {}).get('summary', {})
-                        ev_summary = analysis_data.get('ev_system', {}).get('summary', {})
+                    # Try EV prediction (uses _ev.json files)
+                    ev_prediction = ev_results_repo.load_ev_results(game_date, home_abbr_extracted, away_abbr)
+                    if not ev_prediction:
+                        ev_prediction = ev_results_repo.load_ev_results(game_date, away_abbr, home_abbr_extracted)
 
-                        console.print(f"  ├─ [green]✓ Dual analysis complete[/green]", style="dim")
-                        console.print(f"  ├─ [cyan]AI System:[/cyan] ${ai_summary.get('total_profit', 0):+.2f} | "
-                                    f"{ai_summary.get('bets_won', 0)}/{ai_summary.get('total_bets', 5)} wins "
-                                    f"({ai_summary.get('win_rate', 0):.1f}%)")
-                        console.print(f"  └─ [cyan]EV System:[/cyan] ${ev_summary.get('total_profit', 0):+.2f} | "
-                                    f"{ev_summary.get('bets_won', 0)}/{ev_summary.get('total_bets', 5)} wins "
-                                    f"({ev_summary.get('win_rate', 0):.1f}%)")
+                    # Try AI prediction (uses _ai.json files)
+                    ai_prediction = prediction_repo.load_prediction(game_date, home_abbr_extracted, away_abbr)
+                    if not ai_prediction:
+                        ai_prediction = prediction_repo.load_prediction(game_date, away_abbr, home_abbr_extracted)
 
-                    elif has_ai:
-                        console.print("  ├─ [cyan]AI prediction found - analyzing AI system[/cyan]", style="dim")
-                        analysis_data = analyzer.generate_analysis(game_key, game_meta)
-                        anthropic_api_called = True
+                    # Process both if available, otherwise just one
+                    analysis_results = {}
 
-                        # Display P/L summary
-                        summary = analysis_data.get('summary', {})
-                        total_profit = summary.get('total_profit', 0)
-                        win_rate = summary.get('win_rate', 0)
-                        bets_won = summary.get('bets_won', 0)
-                        total_bets = summary.get('total_bets', 5)
+                    if ev_prediction and ev_prediction.get("bets"):
+                        ev_analysis = check_bets(ev_prediction, result_data)
+                        analysis_results["ev_system"] = ev_analysis
+                        prediction_type_used = "EV"
 
-                        console.print(f"  ├─ [green]✓ Analysis complete[/green]", style="dim")
-                        console.print(f"  └─ [green]✓ P/L: ${total_profit:+.2f} | {bets_won}/{total_bets} wins ({win_rate:.1f}%)[/green]")
+                    if ai_prediction and ai_prediction.get("bets"):
+                        ai_analysis = check_bets(ai_prediction, result_data)
+                        analysis_results["ai_system"] = ai_analysis
+                        if prediction_type_used:
+                            prediction_type_used = "AI+EV"
+                        else:
+                            prediction_type_used = "AI"
 
-                    elif has_ev:
-                        console.print("  ├─ [cyan]EV prediction found - analyzing EV system[/cyan]", style="dim")
-                        analysis_data = analyzer.generate_dual_analysis(game_key, game_meta)
-                        anthropic_api_called = True
-
-                        # Display P/L summary
-                        ev_summary = analysis_data.get('ev_system', {}).get('summary', {})
-                        console.print(f"  ├─ [green]✓ Analysis complete[/green]", style="dim")
-                        console.print(f"  └─ [green]✓ P/L: ${ev_summary.get('total_profit', 0):+.2f} | "
-                                    f"{ev_summary.get('bets_won', 0)}/{ev_summary.get('total_bets', 5)} wins "
-                                    f"({ev_summary.get('win_rate', 0):.1f}%)[/green]")
-
-                    else:
-                        console.print("  └─ [yellow]⚠ No predictions found (neither AI nor EV)[/yellow]")
+                    if not analysis_results:
+                        console.print("  └─ [yellow]⚠ No predictions found[/yellow]")
                         failed_count += 1
                         continue
 
-                    # Update metadata using service
+                    # Save analysis
+                    analysis_repo.save_analysis(game_date, home_abbr_extracted, away_abbr, analysis_results)
+
+                    # Display P/L summary
+                    if "ai_system" in analysis_results and "ev_system" in analysis_results:
+                        ai_summary = analysis_results["ai_system"]["summary"]
+                        ev_summary = analysis_results["ev_system"]["summary"]
+                        console.print(f"  ├─ [green]✓ Analysis complete ({prediction_type_used})[/green]")
+                        console.print(f"  ├─ [cyan]AI:[/cyan] ${ai_summary['total_profit']:+.2f} | "
+                                    f"{ai_summary['bets_won']}/{ai_summary['total_bets']} wins "
+                                    f"({ai_summary['win_rate']:.1f}%)")
+                        console.print(f"  └─ [cyan]EV:[/cyan] ${ev_summary['total_profit']:+.2f} | "
+                                    f"{ev_summary['bets_won']}/{ev_summary['total_bets']} wins "
+                                    f"({ev_summary['win_rate']:.1f}%)")
+                    else:
+                        # Single system
+                        system_key = "ev_system" if "ev_system" in analysis_results else "ai_system"
+                        summary = analysis_results[system_key]["summary"]
+                        console.print(f"  └─ [green]✓ P/L: ${summary['total_profit']:+.2f} | "
+                                    f"{summary['bets_won']}/{summary['total_bets']} wins "
+                                    f"({summary['win_rate']:.1f}%)[/green]")
+
+                    # Update metadata
                     metadata[game_key]["analysis_generated"] = True
                     metadata[game_key]["analysis_generated_at"] = get_eastern_now().strftime("%Y-%m-%d %H:%M:%S")
                     predictions_metadata_service.save_metadata(metadata)
@@ -355,18 +314,11 @@ def fetch_results():
 
                 except Exception as analysis_error:
                     console.print(f"  └─ [red]✗ Analysis failed: {str(analysis_error)}[/red]")
-                    console.print(f"     [dim]Results saved, but analysis incomplete[/dim]")
                     failed_count += 1
                     continue
             else:
                 console.print("  └─ [dim]Analysis already generated, skipping...[/dim]")
                 success_count += 1
-
-            # Rate limiting for Claude API (60 seconds between calls)
-            if anthropic_api_called and i < len(games_to_fetch):
-                next_game_info = f"{games_to_fetch[i]['meta']['teams'][0]} vs {games_to_fetch[i]['meta']['teams'][1]}"
-                wait_with_countdown(60, next_game_info, i, len(games_to_fetch))
-                anthropic_api_called = False
 
         except Exception as e:
             console.print(f"  └─ [red]✗ Error: {str(e)}[/red]")
