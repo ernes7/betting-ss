@@ -8,7 +8,7 @@ from shared.models.probability_calculator import ProbabilityCalculator
 from shared.models.bet_validator import BetValidator
 from shared.utils.player_filter import PlayerFilter
 from shared.utils.player_game_log import PlayerGameLog
-from nfl.teams import PFR_ABBR_TO_NAME
+from sports.nfl.teams import PFR_ABBR_TO_NAME
 
 # Minimum games required for recent form calculation
 MIN_GAMES_REQUIRED = 3

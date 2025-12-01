@@ -17,10 +17,14 @@ rich = "^14.2.0"
 streamlit = "^1.40.0"
 plotly = "^5.24.0"
 beautifulsoup4 = "^4.12.0"
+pyyaml = "^6.0.0"
 
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.14.1"
+pytest = "^8.0.0"
+pytest-cov = "^4.1.0"
+pytest-asyncio = "^0.23.0"
 
 [build-system]
 requires = ["poetry-core"]

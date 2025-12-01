@@ -1,0 +1,77 @@
+# Main application settings
+# All configurable values are externalized here
+
+# Scraping Configuration
+scraping:
+  # ODDS service scraping settings
+  odds:
+    interval_seconds: 12.0
+    timeout_ms: 30000
+    max_retries: 3
+    retry_delay_seconds: 2.0
+    headless: true
+    wait_time_ms: 2000
+
+  # RESULTS service scraping settings
+  results:
+    interval_seconds: 3.0
+    timeout_ms: 30000
+    max_retries: 3
+    retry_delay_seconds: 2.0
+    headless: true
+    wait_time_ms: 1000
+
+  # PREDICTION service (for profile/rankings scraping)
+  prediction:
+    interval_seconds: 5.0
+    timeout_ms: 30000
+    max_retries: 3
+    retry_delay_seconds: 2.0
+    headless: true
+    wait_time_ms: 1000
+
+  # Rate limits
+  rate_limits:
+    sports_reference:
+      calls: 1
+      period_seconds: 5.0
+    draftkings:
+      calls: 1
+      period_seconds: 2.0
+
+# Claude API Configuration
+api:
+  claude:
+    model: "claude-sonnet-4-5-20250929"
+    temperature: 0.7
+    max_tokens: 16000
+    input_cost_per_mtok: 3.0
+    output_cost_per_mtok: 15.0
+
+# Data Paths Configuration
+# Use {sport} as placeholder for sport name (nfl, nba, etc.)
+# Use {date} as placeholder for game date (YYYY-MM-DD)
+paths:
+  data_root: "sports/{sport}/data"
+  odds: "{data_root}/odds/{date}"
+  predictions: "{data_root}/predictions/{date}"
+  predictions_ev: "{data_root}/predictions_ev/{date}"
+  results: "{data_root}/results/{date}"
+  analysis: "{data_root}/analysis/{date}"
+  analysis_ev: "{data_root}/analysis_ev/{date}"
+  rankings: "{data_root}/rankings"
+  profiles: "{data_root}/profiles/{team}"
+
+# Logging Configuration
+logging:
+  directory: "logs"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  date_format: "%Y-%m-%d %H:%M:%S"
+  max_bytes: 10485760  # 10 MB
+  backup_count: 5
+  level: "INFO"
+
+# Error Handling Configuration
+errors:
+  output_file: "errors.json"
+  include_traceback: true

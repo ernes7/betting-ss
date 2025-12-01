@@ -37,5 +37,4 @@ screenshots/
 *.html
 
 # Data directories (all generated/scraped data)
-nfl/data/
-nba/data/
+sports/*/data/

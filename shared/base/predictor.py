@@ -87,7 +87,7 @@ class Predictor:
         profile_b: dict | None = None,
         odds: dict = None
     ) -> dict:
-        """Generate betting predictions with EV+ analysis and Kelly Criterion.
+        """Generate betting predictions with EV+ analysis.
 
         Args:
             team_a: First team name

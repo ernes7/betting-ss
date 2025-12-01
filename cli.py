@@ -1,22 +1,20 @@
 """Multi-Sport Betting Analysis CLI
 
 Interactive menu-based interface for generating betting predictions across multiple sports.
+Uses the new services architecture for workflow orchestration.
 """
+
+from typing import List, Optional, Dict, Any
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.prompt import Prompt
+from rich.prompt import Prompt, Confirm
+from rich.table import Table
 from rich.text import Text
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from nfl.cli_utils.predict import (
-    predict_game as nfl_predict_game,
-    predict_all_games as nfl_predict_all_games,
-    predict_all_games_dual as nfl_predict_all_games_dual
-)
-from nfl.cli_utils.ev_analyze import ev_analyze_game as nfl_ev_analyze
-from nfl.cli_utils.fetch_odds import fetch_odds_command as nfl_fetch_odds
-from nfl.cli_utils.fetch_results import fetch_results as nfl_fetch_results
-from nba.cli_utils.fetch_odds import fetch_odds_command as nba_fetch_odds
+from services.cli import CLIOrchestrator, get_default_config
+from shared.factory import SportFactory
 
 # Initialize Rich console
 console = Console()
@@ -26,26 +24,238 @@ SPORTS = {
     "1": {
         "name": "NFL",
         "emoji": "🏈",
-        "predict_fn": nfl_predict_game,
-        "predict_all_fn": nfl_predict_all_games,
-        "predict_dual_fn": nfl_predict_all_games_dual,
-        "ev_analyze_fn": nfl_ev_analyze,
-        "fetch_odds_fn": nfl_fetch_odds,
-        "fetch_results_fn": nfl_fetch_results,
+        "code": "nfl",
     },
     "2": {
         "name": "NBA",
         "emoji": "🏀",
-        "predict_fn": None,  # NBA not yet implemented for EV betting
-        "predict_all_fn": None,  # NBA not yet implemented for EV betting
-        "ev_analyze_fn": None,  # NBA not yet implemented
-        "fetch_odds_fn": nba_fetch_odds,
-        "fetch_results_fn": None,  # NBA not yet implemented for EV betting
+        "code": "nba",
     },
 }
 
 
-def select_sport():
+# =============================================================================
+# Helper Functions for Game/Date Selection
+# =============================================================================
+
+
+def get_available_dates(orchestrator: CLIOrchestrator) -> List[str]:
+    """Get dates that have odds files.
+
+    Args:
+        orchestrator: CLI orchestrator instance
+
+    Returns:
+        List of dates in YYYY-MM-DD format, newest first
+    """
+    return orchestrator.odds_service.get_available_dates()
+
+
+def select_date(orchestrator: CLIOrchestrator, source: str = "odds") -> Optional[str]:
+    """Interactive date selection from available data.
+
+    Args:
+        orchestrator: CLI orchestrator instance
+        source: Data source to check ('odds' or 'predictions')
+
+    Returns:
+        Selected date string or None if cancelled
+    """
+    if source == "predictions":
+        dates = get_prediction_dates(orchestrator)
+    else:
+        dates = get_available_dates(orchestrator)
+
+    if not dates:
+        console.print(f"[yellow]No {source} data found for {orchestrator.sport.upper()}[/yellow]")
+        return None
+
+    console.print(f"\n[bold cyan]Available Dates ({source}):[/bold cyan]")
+    for i, date in enumerate(dates[:15], 1):  # Show max 15 dates
+        console.print(f"  {i}. {date}")
+
+    if len(dates) > 15:
+        console.print(f"  [dim]... and {len(dates) - 15} more[/dim]")
+
+    choice = Prompt.ask(
+        "\n[cyan]Select date number (or type YYYY-MM-DD)[/cyan]",
+        default="1"
+    )
+
+    # Handle numeric selection
+    if choice.isdigit():
+        idx = int(choice) - 1
+        if 0 <= idx < len(dates):
+            return dates[idx]
+        console.print("[red]Invalid selection[/red]")
+        return None
+
+    # Handle direct date input
+    if len(choice) == 10 and choice.count("-") == 2:
+        return choice
+
+    console.print("[red]Invalid date format[/red]")
+    return None
+
+
+def get_games_for_date(orchestrator: CLIOrchestrator, game_date: str) -> List[Dict[str, Any]]:
+    """Get games from odds files for a date.
+
+    Args:
+        orchestrator: CLI orchestrator instance
+        game_date: Date in YYYY-MM-DD format
+
+    Returns:
+        List of game dicts with away_team and home_team
+    """
+    all_odds = orchestrator.odds_service.get_all_odds_for_date(game_date)
+    games = []
+
+    for odds in all_odds:
+        teams = odds.get("teams", {})
+        away = teams.get("away", {})
+        home = teams.get("home", {})
+
+        games.append({
+            "away_team": away.get("abbr", away.get("name", "?")),
+            "home_team": home.get("abbr", home.get("name", "?")),
+            "away_name": away.get("name", ""),
+            "home_name": home.get("name", ""),
+        })
+
+    return games
+
+
+def get_prediction_dates(orchestrator: CLIOrchestrator) -> List[str]:
+    """Get dates that have prediction files.
+
+    Args:
+        orchestrator: CLI orchestrator instance
+
+    Returns:
+        List of dates with predictions
+    """
+    import os
+    from pathlib import Path
+
+    pred_dir = Path(f"sports/{orchestrator.sport}/data/predictions")
+    if not pred_dir.exists():
+        return []
+
+    dates = []
+    for d in pred_dir.iterdir():
+        if d.is_dir() and len(d.name) == 10:  # YYYY-MM-DD format
+            dates.append(d.name)
+
+    return sorted(dates, reverse=True)
+
+
+def select_games(games: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Interactive game selection.
+
+    Args:
+        games: List of available games
+
+    Returns:
+        Selected games list
+    """
+    if not games:
+        return []
+
+    console.print(f"\n[bold cyan]Available Games ({len(games)}):[/bold cyan]")
+    for i, game in enumerate(games, 1):
+        away = game.get("away_team", "?")
+        home = game.get("home_team", "?")
+        console.print(f"  {i}. {away} @ {home}")
+
+    console.print(f"  A. [bold]All games[/bold]")
+
+    choice = Prompt.ask(
+        "\n[cyan]Select games (e.g., '1,2,3' or 'A' for all)[/cyan]",
+        default="A"
+    )
+
+    if choice.upper() == "A":
+        return games
+
+    try:
+        indices = [int(x.strip()) - 1 for x in choice.split(",")]
+        selected = [games[i] for i in indices if 0 <= i < len(games)]
+        return selected
+    except (ValueError, IndexError):
+        console.print("[yellow]Invalid selection, using all games[/yellow]")
+        return games
+
+
+def display_prediction_results(result: Dict[str, Any], game_info: str):
+    """Display prediction results in a formatted panel.
+
+    Args:
+        result: Prediction result dictionary
+        game_info: Game description string
+    """
+    if not result.get("success"):
+        console.print(f"[red]Prediction failed for {game_info}: {result.get('error')}[/red]")
+        return
+
+    # EV Results
+    ev_result = result.get("ev_result")
+    if ev_result and "error" not in ev_result:
+        bets = ev_result.get("bets", [])
+        console.print(f"\n[green]EV Calculator - {len(bets)} bets found[/green]")
+
+        if bets:
+            table = Table(show_header=True, header_style="bold cyan")
+            table.add_column("#", width=3)
+            table.add_column("Bet", min_width=30)
+            table.add_column("Odds", width=8)
+            table.add_column("EV%", width=8)
+
+            for i, bet in enumerate(bets[:5], 1):
+                table.add_row(
+                    str(i),
+                    bet.get("bet", bet.get("description", "?")),
+                    str(bet.get("odds", "?")),
+                    f"+{bet.get('expected_value', bet.get('ev', 0)):.1f}%"
+                )
+            console.print(table)
+
+    # AI Results
+    ai_result = result.get("ai_result")
+    if ai_result and "error" not in ai_result:
+        bets = ai_result.get("bets", [])
+        cost = result.get("total_cost", 0)
+        console.print(f"\n[blue]AI Predictor - {len(bets)} bets (${cost:.2f})[/blue]")
+
+        if bets:
+            table = Table(show_header=True, header_style="bold blue")
+            table.add_column("#", width=3)
+            table.add_column("Bet", min_width=30)
+            table.add_column("Odds", width=8)
+            table.add_column("EV%", width=8)
+
+            for i, bet in enumerate(bets[:5], 1):
+                table.add_row(
+                    str(i),
+                    bet.get("bet", "?"),
+                    str(bet.get("odds", "?")),
+                    f"+{bet.get('expected_value', 0):.1f}%"
+                )
+            console.print(table)
+
+    # Comparison
+    comparison = result.get("comparison")
+    if comparison:
+        console.print(f"\n[dim]Agreement: {comparison.get('agreements', 0)} bets, "
+                      f"Rate: {comparison.get('agreement_rate', 0):.0%}[/dim]")
+
+
+# =============================================================================
+# Menu Functions
+# =============================================================================
+
+
+def select_sport() -> dict:
     """Display sport selection menu and return selected sport config."""
     console.print()
 
@@ -73,7 +283,7 @@ def select_sport():
     return SPORTS[choice]
 
 
-def display_menu(sport_config):
+def display_menu(sport_config: dict):
     """Display the main menu with sport-specific formatting."""
     console.print()
 
@@ -89,34 +299,531 @@ def display_menu(sport_config):
     menu_text.append("\n1. ", style="bold yellow")
     menu_text.append("Predict Game (AI)\n", style="white")
     menu_text.append("   ", style="dim")
-    menu_text.append("[Single game AI prediction with EV+ analysis]\n", style="dim")
+    menu_text.append("[Single game AI prediction ~$0.15]\n", style="dim")
     menu_text.append("2. ", style="bold yellow")
     menu_text.append("EV Calculator Analysis\n", style="white")
     menu_text.append("   ", style="dim")
-    menu_text.append("[Statistical EV calculator (fast, free)]\n", style="dim")
+    menu_text.append("[Statistical EV calculator (FREE)]\n", style="dim")
     menu_text.append("3. ", style="bold yellow")
-    menu_text.append("Run Dual Predictions (Matchday)\n", style="white")
+    menu_text.append("Run Dual Predictions\n", style="white")
     menu_text.append("   ", style="dim")
-    menu_text.append("[Run BOTH systems for all games on a date]\n", style="dim")
+    menu_text.append("[Run BOTH EV + AI for comparison]\n", style="dim")
     menu_text.append("4. ", style="bold yellow")
-    menu_text.append("Predict All Games (AI Only)\n", style="white")
+    menu_text.append("Predict All Games (AI)\n", style="white")
     menu_text.append("   ", style="dim")
     menu_text.append("[Batch AI predictions for a date]\n", style="dim")
     menu_text.append("5. ", style="bold yellow")
     menu_text.append("Fetch Odds\n", style="white")
     menu_text.append("   ", style="dim")
-    menu_text.append("[Fetch betting odds from DraftKings]\n", style="dim")
+    menu_text.append("[Paste DraftKings URL to save odds]\n", style="dim")
     menu_text.append("6. ", style="bold yellow")
-    menu_text.append("Fetch Results\n", style="white")
+    menu_text.append("Fetch Results & Analyze\n", style="white")
     menu_text.append("   ", style="dim")
-    menu_text.append("[Calculate P/L with EV analysis]\n", style="dim")
+    menu_text.append("[Get results and calculate P/L]\n", style="dim")
     menu_text.append("7. ", style="bold yellow")
-    menu_text.append("Change Sport\n", style="white")
+    menu_text.append("View Dashboard\n", style="white")
+    menu_text.append("   ", style="dim")
+    menu_text.append("[Open Streamlit dashboard]\n", style="dim")
     menu_text.append("8. ", style="bold yellow")
+    menu_text.append("Change Sport\n", style="white")
+    menu_text.append("9. ", style="bold yellow")
     menu_text.append("Exit\n", style="white")
 
     # Display in panel
     console.print(Panel(menu_text, title=header, border_style="cyan", padding=(1, 2)))
+
+
+# =============================================================================
+# Menu Option Implementations
+# =============================================================================
+
+
+def run_fetch_odds(orchestrator: CLIOrchestrator):
+    """Fetch odds from DraftKings URL (Menu Option 5)."""
+    console.print("\n[bold cyan]Fetch Odds from DraftKings[/bold cyan]")
+    console.print("[dim]Paste a DraftKings game URL to extract and save odds.[/dim]")
+
+    url = Prompt.ask("\n[cyan]DraftKings URL[/cyan]")
+
+    if not url or "draftkings" not in url.lower():
+        console.print("[yellow]Invalid URL. Must be a DraftKings game page.[/yellow]")
+        return
+
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            progress.add_task("Fetching odds from DraftKings...", total=None)
+            odds_data = orchestrator.odds_service.fetch_from_url(url)
+
+        if odds_data:
+            # Extract team info for display
+            teams = odds_data.get("teams", {})
+            away = teams.get("away", {}).get("name", "?")
+            home = teams.get("home", {}).get("name", "?")
+            game_date = odds_data.get("game_date", "")[:10]
+
+            path = orchestrator.odds_service.save_odds(odds_data)
+            console.print(f"\n[green]Odds saved successfully![/green]")
+            console.print(f"  Game: {away} @ {home}")
+            console.print(f"  Date: {game_date}")
+            console.print(f"  Path: {path}")
+
+            # Show summary
+            props = odds_data.get("player_props", [])
+            console.print(f"\n  [dim]Player props: {len(props)} players[/dim]")
+        else:
+            console.print("[red]Failed to fetch odds - no data returned[/red]")
+
+    except Exception as e:
+        console.print(f"[red]Error fetching odds: {e}[/red]")
+
+
+def run_ev_calculator(orchestrator: CLIOrchestrator):
+    """Run EV Calculator predictions (Menu Option 2)."""
+    console.print("\n[bold cyan]EV Calculator Analysis[/bold cyan]")
+    console.print("[dim]Free statistical analysis using historical data.[/dim]")
+
+    # Select date
+    game_date = select_date(orchestrator, source="odds")
+    if not game_date:
+        return
+
+    # Get games for date
+    games = get_games_for_date(orchestrator, game_date)
+    if not games:
+        console.print(f"[yellow]No odds found for {game_date}[/yellow]")
+        return
+
+    # Select games
+    selected = select_games(games)
+    if not selected:
+        return
+
+    console.print(f"\n[bold]Running EV analysis for {len(selected)} game(s)...[/bold]\n")
+
+    # Get sport config
+    sport = SportFactory.create(orchestrator.sport)
+
+    for game in selected:
+        away = game["away_team"]
+        home = game["home_team"]
+        game_info = f"{away} @ {home}"
+
+        console.print(f"[cyan]Processing: {game_info}[/cyan]")
+
+        try:
+            # Load odds
+            odds = orchestrator.odds_service.load_odds(game_date, home, away)
+            if not odds:
+                console.print(f"[yellow]  No odds found, skipping[/yellow]")
+                continue
+
+            # Run prediction (EV only)
+            result = orchestrator.prediction_service.predict_game(
+                game_date=game_date,
+                away_team=game.get("away_name", away),
+                home_team=game.get("home_name", home),
+                odds=odds,
+                run_ev=True,
+                run_ai=False,
+            )
+
+            display_prediction_results(result, game_info)
+
+            # Save EV prediction
+            if result.get("ev_result") and "error" not in result["ev_result"]:
+                game_key = f"{home}_{away}".lower()
+                orchestrator.prediction_service.save_prediction(
+                    result["ev_result"],
+                    game_key=game_key,
+                    game_date=game_date,
+                    prediction_type="ev"
+                )
+                console.print(f"[dim]  Saved to predictions_ev/[/dim]")
+
+        except Exception as e:
+            console.print(f"[red]  Error: {e}[/red]")
+
+
+def run_ai_prediction(orchestrator: CLIOrchestrator):
+    """Run AI predictions for single game (Menu Option 1)."""
+    console.print("\n[bold cyan]AI Prediction (Claude)[/bold cyan]")
+    console.print("[yellow]Note: AI predictions cost ~$0.10-0.15 per game[/yellow]")
+
+    # Select date
+    game_date = select_date(orchestrator, source="odds")
+    if not game_date:
+        return
+
+    # Get games for date
+    games = get_games_for_date(orchestrator, game_date)
+    if not games:
+        console.print(f"[yellow]No odds found for {game_date}[/yellow]")
+        return
+
+    # Select games
+    selected = select_games(games)
+    if not selected:
+        return
+
+    # Confirm cost
+    estimated_cost = len(selected) * 0.15
+    if not Confirm.ask(f"\n[yellow]Estimated cost: ${estimated_cost:.2f}. Continue?[/yellow]"):
+        return
+
+    console.print(f"\n[bold]Running AI predictions for {len(selected)} game(s)...[/bold]\n")
+
+    # Get sport config
+    sport = SportFactory.create(orchestrator.sport)
+    total_cost = 0.0
+
+    for game in selected:
+        away = game["away_team"]
+        home = game["home_team"]
+        game_info = f"{away} @ {home}"
+
+        console.print(f"[cyan]Processing: {game_info}[/cyan]")
+
+        try:
+            # Load odds
+            odds = orchestrator.odds_service.load_odds(game_date, home, away)
+            if not odds:
+                console.print(f"[yellow]  No odds found, skipping[/yellow]")
+                continue
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task(f"Calling Claude API...", total=None)
+
+                # Run prediction (AI only)
+                result = orchestrator.prediction_service.predict_game(
+                    game_date=game_date,
+                    away_team=game.get("away_name", away),
+                    home_team=game.get("home_name", home),
+                    odds=odds,
+                    run_ev=False,
+                    run_ai=True,
+                )
+
+            total_cost += result.get("total_cost", 0)
+            display_prediction_results(result, game_info)
+
+            # Save AI prediction
+            if result.get("ai_result") and "error" not in result["ai_result"]:
+                game_key = f"{home}_{away}".lower()
+                orchestrator.prediction_service.save_prediction(
+                    result["ai_result"],
+                    game_key=game_key,
+                    game_date=game_date,
+                    prediction_type="ai"
+                )
+                console.print(f"[dim]  Saved to predictions/[/dim]")
+
+        except Exception as e:
+            console.print(f"[red]  Error: {e}[/red]")
+
+    console.print(f"\n[bold green]Total API cost: ${total_cost:.2f}[/bold green]")
+
+
+def run_dual_predictions(orchestrator: CLIOrchestrator):
+    """Run both EV and AI predictions (Menu Option 3)."""
+    console.print("\n[bold cyan]Dual Predictions (EV + AI)[/bold cyan]")
+    console.print("[dim]Run both systems for comparison[/dim]")
+    console.print("[yellow]Note: AI predictions cost ~$0.10-0.15 per game[/yellow]")
+
+    # Select date
+    game_date = select_date(orchestrator, source="odds")
+    if not game_date:
+        return
+
+    # Get games for date
+    games = get_games_for_date(orchestrator, game_date)
+    if not games:
+        console.print(f"[yellow]No odds found for {game_date}[/yellow]")
+        return
+
+    # Select games
+    selected = select_games(games)
+    if not selected:
+        return
+
+    # Confirm cost
+    estimated_cost = len(selected) * 0.15
+    if not Confirm.ask(f"\n[yellow]Estimated cost: ${estimated_cost:.2f}. Continue?[/yellow]"):
+        return
+
+    console.print(f"\n[bold]Running dual predictions for {len(selected)} game(s)...[/bold]\n")
+
+    # Get sport config
+    sport = SportFactory.create(orchestrator.sport)
+    total_cost = 0.0
+
+    for game in selected:
+        away = game["away_team"]
+        home = game["home_team"]
+        game_info = f"{away} @ {home}"
+
+        console.print(f"\n[cyan]Processing: {game_info}[/cyan]")
+
+        try:
+            # Load odds
+            odds = orchestrator.odds_service.load_odds(game_date, home, away)
+            if not odds:
+                console.print(f"[yellow]  No odds found, skipping[/yellow]")
+                continue
+
+            # Run EV first (fast)
+            console.print("[dim]  Running EV Calculator...[/dim]")
+            ev_result = orchestrator.prediction_service.predict_game(
+                game_date=game_date,
+                away_team=game.get("away_name", away),
+                home_team=game.get("home_name", home),
+                odds=odds,
+                run_ev=True,
+                run_ai=False,
+            )
+
+            # Run AI (slow)
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task(f"Calling Claude API...", total=None)
+
+                ai_result = orchestrator.prediction_service.predict_game(
+                    game_date=game_date,
+                    away_team=game.get("away_name", away),
+                    home_team=game.get("home_name", home),
+                    odds=odds,
+                    run_ev=False,
+                    run_ai=True,
+                )
+
+            # Combine results
+            result = {
+                "success": True,
+                "ev_result": ev_result.get("ev_result"),
+                "ai_result": ai_result.get("ai_result"),
+                "total_cost": ai_result.get("total_cost", 0),
+            }
+
+            total_cost += result.get("total_cost", 0)
+            display_prediction_results(result, game_info)
+
+            # Save both predictions
+            game_key = f"{home}_{away}".lower()
+
+            if result.get("ev_result") and "error" not in result["ev_result"]:
+                orchestrator.prediction_service.save_prediction(
+                    result["ev_result"],
+                    game_key=game_key,
+                    game_date=game_date,
+                    prediction_type="ev"
+                )
+
+            if result.get("ai_result") and "error" not in result["ai_result"]:
+                orchestrator.prediction_service.save_prediction(
+                    result["ai_result"],
+                    game_key=game_key,
+                    game_date=game_date,
+                    prediction_type="ai"
+                )
+
+            console.print(f"[dim]  Saved EV and AI predictions[/dim]")
+
+        except Exception as e:
+            console.print(f"[red]  Error: {e}[/red]")
+
+    console.print(f"\n[bold green]Total API cost: ${total_cost:.2f}[/bold green]")
+
+
+def run_batch_ai_predictions(orchestrator: CLIOrchestrator):
+    """Run AI predictions for all games on a date (Menu Option 4)."""
+    console.print("\n[bold cyan]Batch AI Predictions[/bold cyan]")
+    console.print("[dim]Run AI predictions for all games on a date[/dim]")
+
+    # Select date
+    game_date = select_date(orchestrator, source="odds")
+    if not game_date:
+        return
+
+    # Get ALL games for date
+    games = get_games_for_date(orchestrator, game_date)
+    if not games:
+        console.print(f"[yellow]No odds found for {game_date}[/yellow]")
+        return
+
+    # Show games and estimate cost
+    console.print(f"\n[bold]Found {len(games)} games:[/bold]")
+    for game in games:
+        console.print(f"  - {game['away_team']} @ {game['home_team']}")
+
+    estimated_cost = len(games) * 0.15
+    console.print(f"\n[yellow]Estimated cost: ${estimated_cost:.2f}[/yellow]")
+
+    if not Confirm.ask(f"\nRun AI predictions for all {len(games)} games?"):
+        return
+
+    # Use batch prediction
+    console.print(f"\n[bold]Starting batch predictions...[/bold]\n")
+
+    def odds_loader(date: str, game: Dict) -> Optional[Dict]:
+        return orchestrator.odds_service.load_odds(
+            date, game.get("home_team"), game.get("away_team")
+        )
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task(f"Processing {len(games)} games...", total=None)
+
+        result = orchestrator.prediction_service.predict_games_batch(
+            game_date=game_date,
+            games=games,
+            odds_loader=odds_loader,
+        )
+
+    # Display summary
+    console.print(f"\n[bold green]Batch Complete![/bold green]")
+    console.print(f"  Processed: {result.get('games_processed', 0)}")
+    console.print(f"  Skipped: {result.get('games_skipped', 0)}")
+    console.print(f"  Failed: {result.get('games_failed', 0)}")
+    console.print(f"  Total Cost: ${result.get('total_cost', 0):.2f}")
+
+    # Show errors if any
+    errors = result.get("errors", [])
+    if errors:
+        console.print("\n[red]Errors:[/red]")
+        for err in errors:
+            console.print(f"  - {err.get('game')}: {err.get('error')}")
+
+
+def run_fetch_results_and_analyze(orchestrator: CLIOrchestrator):
+    """Fetch results and run P&L analysis (Menu Option 6)."""
+    console.print("\n[bold cyan]Fetch Results & Analyze[/bold cyan]")
+    console.print("[dim]Fetch game results and calculate P/L for predictions[/dim]")
+
+    # Select date from predictions (not odds)
+    game_date = select_date(orchestrator, source="predictions")
+    if not game_date:
+        return
+
+    # Get games from predictions folder
+    games = get_games_for_date(orchestrator, game_date)
+    if not games:
+        # Try loading from odds if predictions empty
+        games = get_games_for_date(orchestrator, game_date)
+
+    if not games:
+        console.print(f"[yellow]No games found for {game_date}[/yellow]")
+        return
+
+    selected = select_games(games)
+    if not selected:
+        return
+
+    console.print(f"\n[bold]Fetching results for {len(selected)} game(s)...[/bold]\n")
+
+    results_fetched = 0
+    analyses_completed = 0
+
+    for game in selected:
+        away = game["away_team"]
+        home = game["home_team"]
+        game_info = f"{away} @ {home}"
+
+        console.print(f"[cyan]Processing: {game_info}[/cyan]")
+
+        try:
+            # Fetch result from Pro-Football-Reference
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task("Fetching boxscore...", total=None)
+
+                result_data = orchestrator.results_service.fetch_game_result(
+                    game_date=game_date,
+                    away_team=away,
+                    home_team=home,
+                )
+
+            if result_data:
+                orchestrator.results_service.save_result(
+                    result_data, game_date, away, home
+                )
+                results_fetched += 1
+
+                # Display score
+                final_score = result_data.get("final_score", {})
+                away_score = final_score.get("away", "?")
+                home_score = final_score.get("home", "?")
+                console.print(f"  [green]Final: {away} {away_score} - {home_score} {home}[/green]")
+
+                # Run analysis if prediction exists
+                try:
+                    game_key = f"{home}_{away}".lower()
+
+                    # Try to load EV prediction
+                    prediction = orchestrator.prediction_service.load_prediction(
+                        game_key=game_key,
+                        game_date=game_date,
+                        prediction_type="ev"
+                    )
+
+                    if prediction:
+                        analysis = orchestrator.analysis_service.analyze_game(
+                            game_date=game_date,
+                            away_team=away,
+                            home_team=home,
+                            prediction_data=prediction,
+                            result_data=result_data,
+                        )
+
+                        if analysis:
+                            analyses_completed += 1
+                            summary = analysis.get("summary", {})
+                            profit = summary.get("total_profit", 0)
+                            win_rate = summary.get("win_rate", 0)
+
+                            profit_style = "green" if profit > 0 else "red"
+                            console.print(f"  [dim]Analysis: ${profit:+.2f} ({win_rate:.0%} win rate)[/dim]")
+
+                except Exception as e:
+                    console.print(f"  [dim]No prediction found for analysis[/dim]")
+
+            else:
+                console.print(f"  [yellow]No result found (game may not have finished)[/yellow]")
+
+        except Exception as e:
+            console.print(f"  [red]Error: {e}[/red]")
+
+    console.print(f"\n[bold green]Complete![/bold green]")
+    console.print(f"  Results fetched: {results_fetched}")
+    console.print(f"  Analyses completed: {analyses_completed}")
+
+
+def run_dashboard():
+    """Show command to run the Streamlit dashboard."""
+    console.print("\n[bold cyan]Streamlit Dashboard[/bold cyan]")
+    console.print("\n[white]To start the dashboard, run:[/white]")
+    console.print("\n[bold green]  streamlit run frontend/app.py[/bold green]")
+    console.print("\n[dim]The dashboard provides full analytics visualization.[/dim]")
+
+
+# =============================================================================
+# Main Entry Point
+# =============================================================================
 
 
 def main():
@@ -124,10 +831,14 @@ def main():
     # Clear screen and show welcome
     console.clear()
     console.print("[bold green]Welcome to Multi-Sport Betting Analysis Tool![/bold green]\n")
-    console.print("[dim]AI-powered predictions for NFL and NBA[/dim]\n")
+    console.print("[dim]AI-powered predictions for NFL and NBA[/dim]")
+    console.print("[dim]Using services architecture[/dim]\n")
 
     # Select initial sport
     current_sport = select_sport()
+
+    # Create orchestrator for the selected sport
+    orchestrator = CLIOrchestrator(sport=current_sport["code"])
 
     while True:
         display_menu(current_sport)
@@ -135,65 +846,51 @@ def main():
         # Get user choice with styled prompt
         choice = Prompt.ask(
             "\n[bold cyan]Select option[/bold cyan]",
-            choices=["1", "2", "3", "4", "5", "6", "7", "8"],
-            default="1"
+            choices=["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+            default="2"
         )
 
         if choice == "1":
             # Predict Game (AI)
-            if current_sport["predict_fn"]:
-                current_sport["predict_fn"]()
-            else:
-                console.print("\n[yellow]⚠ Predictions not yet available for this sport[/yellow]")
-                console.print("[dim]Currently only NFL is supported[/dim]")
+            run_ai_prediction(orchestrator)
             Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
 
         elif choice == "2":
             # EV Calculator Analysis
-            if current_sport.get("ev_analyze_fn"):
-                current_sport["ev_analyze_fn"]()
-            else:
-                console.print("\n[yellow]⚠ EV Calculator not yet available for this sport[/yellow]")
-                console.print("[dim]Currently only NFL is supported[/dim]")
+            run_ev_calculator(orchestrator)
             Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
 
         elif choice == "3":
-            # Run Dual Predictions (Matchday)
-            if current_sport.get("predict_dual_fn"):
-                current_sport["predict_dual_fn"]()
-            else:
-                console.print("\n[yellow]⚠ Dual predictions not yet available for this sport[/yellow]")
-                console.print("[dim]Currently only NFL is supported[/dim]")
+            # Run Dual Predictions
+            run_dual_predictions(orchestrator)
             Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
 
         elif choice == "4":
             # Predict All Games (AI Only)
-            if current_sport.get("predict_all_fn"):
-                current_sport["predict_all_fn"]()
-            else:
-                console.print("\n[yellow]⚠ Batch predictions not yet available for this sport[/yellow]")
-                console.print("[dim]Currently only NFL is supported[/dim]")
+            run_batch_ai_predictions(orchestrator)
             Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
 
         elif choice == "5":
             # Fetch Odds
-            current_sport["fetch_odds_fn"]()
+            run_fetch_odds(orchestrator)
             Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
 
         elif choice == "6":
-            # Fetch Results
-            if current_sport["fetch_results_fn"]:
-                current_sport["fetch_results_fn"]()
-            else:
-                console.print("\n[yellow]⚠ Results fetching not yet available for this sport[/yellow]")
-                console.print("[dim]Currently only NFL is supported[/dim]")
+            # Fetch Results & Analyze
+            run_fetch_results_and_analyze(orchestrator)
             Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
 
         elif choice == "7":
-            # Change Sport
-            current_sport = select_sport()
+            # View Dashboard
+            run_dashboard()
+            Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
 
         elif choice == "8":
+            # Change Sport
+            current_sport = select_sport()
+            orchestrator = CLIOrchestrator(sport=current_sport["code"])
+
+        elif choice == "9":
             # Exit
             console.print("\n[bold green]Exiting... Good luck with your bets! 🎰[/bold green]\n")
             break

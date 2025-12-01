@@ -6,7 +6,11 @@
       "Bash(cat:*)",
       "Bash(python3:*)",
       "Bash(find:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(curl:*)",
+      "Bash(mkdir:*)",
+      "Bash(touch:*)",
+      "Bash(poetry run pytest:*)"
     ],
     "deny": [],
     "ask": []

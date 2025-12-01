@@ -6,8 +6,8 @@ from shared.factory import SportFactory
 def register_all_sports():
     """Register all sport configurations with the factory."""
     # Import sport configs here to avoid circular imports
-    from nfl.nfl_config import NFLConfig
-    from nba.nba_config import NBAConfig
+    from sports.nfl.nfl_config import NFLConfig
+    from sports.nba.nba_config import NBAConfig
 
     # Register each sport
     SportFactory.register("nfl", NFLConfig)

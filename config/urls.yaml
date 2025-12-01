@@ -1,0 +1,23 @@
+# URL Configuration for all data sources
+# Externalized to avoid hardcoding URLs in code
+
+draftkings:
+  nfl:
+    schedule: "https://sportsbook.draftkings.com/leagues/football/nfl"
+    game_prefix: "https://sportsbook.draftkings.com/event/"
+  nba:
+    schedule: "https://sportsbook.draftkings.com/leagues/basketball/nba"
+    game_prefix: "https://sportsbook.draftkings.com/event/"
+
+reference:
+  nfl:
+    base: "https://www.pro-football-reference.com"
+    stats: "https://www.pro-football-reference.com/years/{year}/"
+    defensive_stats: "https://www.pro-football-reference.com/years/{year}/opp.htm"
+    team_profile: "https://www.pro-football-reference.com/teams/{team_abbr}/{year}.htm"
+    boxscore: "https://www.pro-football-reference.com/boxscores/{date}0{home_abbr}.htm"
+  nba:
+    base: "https://www.basketball-reference.com"
+    stats: "https://www.basketball-reference.com/leagues/NBA_{year}.html"
+    team_profile: "https://www.basketball-reference.com/teams/{team_abbr}/{year}.html"
+    boxscore: "https://www.basketball-reference.com/boxscores/{game_id}.html"

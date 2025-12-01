@@ -3,7 +3,7 @@
 import json
 from typing import Dict, Any, Optional
 from pathlib import Path
-from nfl.teams import TEAMS, DK_ABBR_TO_NAME
+from sports.nfl.teams import TEAMS, DK_ABBR_TO_NAME
 
 
 class DataLoader:
