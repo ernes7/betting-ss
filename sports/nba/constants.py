@@ -1,16 +1,13 @@
 """Configuration constants for NBA stats scraping and analysis."""
 
-from shared.config import (
-    SPORTS_REFERENCE_RATE_LIMIT_CALLS,
-    SPORTS_REFERENCE_RATE_LIMIT_PERIOD,
-)
+from config import settings
 
 # Current NBA season year
-CURRENT_YEAR = 2026
+CURRENT_YEAR = settings['seasons']['nba']
 
 # Rate limiting for Basketball-Reference (uses global Sports-Reference rate limits)
-BBR_RATE_LIMIT_CALLS = SPORTS_REFERENCE_RATE_LIMIT_CALLS
-BBR_RATE_LIMIT_PERIOD = SPORTS_REFERENCE_RATE_LIMIT_PERIOD
+BBR_RATE_LIMIT_CALLS = settings['scraping']['sports_reference']['rate_limit_calls']
+BBR_RATE_LIMIT_PERIOD = settings['scraping']['sports_reference']['rate_limit_period']
 
 # URLs
 NBA_STATS_URL = f"https://www.basketball-reference.com/leagues/NBA_{CURRENT_YEAR}.html"

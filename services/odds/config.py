@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Set
 
-from shared.scraping import ScraperConfig, ODDS_SCRAPER_CONFIG
+from shared.scraping import ScraperConfig, DRAFTKINGS_CONFIG
 
 
 @dataclass(frozen=True)
@@ -12,14 +12,14 @@ class OddsServiceConfig:
     """Configuration for the ODDS service.
 
     Attributes:
-        scraper_config: Scraping configuration (intervals, timeouts)
+        scraper_config: Scraping configuration (delays, timeouts)
         data_root: Root directory for odds data
         source: Odds source name (draftkings, etc.)
         included_markets: Market types to include
         excluded_markets: Market types to explicitly exclude
     """
-    scraper_config: ScraperConfig = field(default_factory=lambda: ODDS_SCRAPER_CONFIG)
-    data_root: str = "{sport}/data/odds"
+    scraper_config: ScraperConfig = field(default_factory=lambda: DRAFTKINGS_CONFIG)
+    data_root: str = "sports/{sport}/data/odds"
     source: str = "draftkings"
     included_markets: Set[str] = field(default_factory=set)
     excluded_markets: Set[str] = field(default_factory=set)

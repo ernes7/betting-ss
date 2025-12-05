@@ -2,6 +2,7 @@
 
 import pytest
 from unittest.mock import MagicMock
+import pandas as pd
 
 from services.results import (
     ResultsService,
@@ -24,9 +25,8 @@ def test_results_config():
     """Create a test configuration for the RESULTS service."""
     return ResultsServiceConfig(
         scraper_config=ScraperConfig(
-            interval_seconds=1.0,
-            timeout_ms=5000,
-            headless=True,
+            delay_seconds=0.1,
+            timeout=5,
         ),
         result_tables={
             "scoring": "scoring",
@@ -183,26 +183,32 @@ def sample_result_data():
 
 @pytest.fixture
 def mock_scraper():
-    """Create a mock web scraper."""
+    """Create a mock pandas Scraper."""
     scraper = MagicMock()
-    page = MagicMock()
-    response = MagicMock()
-    response.status = 200
 
-    scraper.launch.return_value.__enter__ = MagicMock(return_value=page)
-    scraper.launch.return_value.__exit__ = MagicMock(return_value=False)
-    scraper.navigate_and_wait.return_value = response
+    # Mock fetch_html to return sample HTML
+    scraper.fetch_html.return_value = "<html><body><table id='scoring'></table></body></html>"
 
-    return scraper, page, response
+    # Mock extract_tables to return sample DataFrames
+    scoring_df = pd.DataFrame({
+        "1": [3, 7],
+        "2": [7, 0],
+        "3": [0, 7],
+        "4": [14, 7],
+        "Final": [24, 21]
+    }, index=["Giants", "Cowboys"])
+
+    scraper.extract_tables.return_value = [scoring_df]
+
+    return scraper
 
 
 @pytest.fixture
 def mock_fetcher(test_results_config, mock_scraper):
     """Create a results fetcher with mock scraper."""
-    scraper, page, response = mock_scraper
     fetcher = ResultsFetcher(
         sport="nfl",
         config=test_results_config,
-        scraper=scraper,
+        scraper=mock_scraper,
     )
     return fetcher

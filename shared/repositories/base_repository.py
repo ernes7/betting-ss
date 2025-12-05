@@ -8,7 +8,7 @@ import json
 import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
-from shared.config import ensure_parent_directory
+from shared.utils.path_utils import ensure_parent_directory
 
 
 class BaseRepository(ABC):

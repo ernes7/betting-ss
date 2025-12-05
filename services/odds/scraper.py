@@ -1,14 +1,14 @@
 """Odds scraper for DraftKings.
 
-Sport-agnostic scraper that extracts betting odds from DraftKings pages.
-Uses constructor injection for configuration.
+Sport-agnostic scraper that extracts betting odds from DraftKings JSON API.
+Uses the new pandas-based Scraper class.
 """
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Set
+from typing import Any
 
-from shared.scraping import WebScraper, ScraperConfig
+from shared.scraping import Scraper
 from shared.logging import get_logger
 from shared.errors import OddsFetchError, OddsParseError
 from shared.utils.timezone_utils import get_eastern_now
@@ -49,7 +49,7 @@ MARKET_NAME_MAP = {
 
 
 class OddsScraper:
-    """Scrapes betting odds from DraftKings.
+    """Scrapes betting odds from DraftKings JSON API.
 
     Uses constructor injection for all configuration.
     Sport-agnostic - works for NFL, NBA, and other sports.
@@ -61,10 +61,10 @@ class OddsScraper:
         )
         scraper = OddsScraper(config=config, sport="nfl")
 
-        # From URL
-        odds = scraper.fetch_odds_from_url(url)
+        # From API
+        odds = scraper.fetch_odds_from_api(event_id)
 
-        # From HTML file
+        # From HTML file (legacy support)
         odds = scraper.extract_odds_from_file(html_path)
     """
 
@@ -72,25 +72,25 @@ class OddsScraper:
         self,
         config: OddsServiceConfig,
         sport: str,
-        web_scraper: WebScraper | None = None,
+        scraper: Scraper | None = None,
     ):
         """Initialize the odds scraper.
 
         Args:
             config: Odds service configuration
             sport: Sport name (nfl, nba)
-            web_scraper: Optional WebScraper instance (created if not provided)
+            scraper: Optional Scraper instance (created if not provided)
         """
         self.config = config
         self.sport = sport.lower()
         self.parser = DraftKingsParser()
-        self.web_scraper = web_scraper or WebScraper(config.scraper_config)
+        self.scraper = scraper or Scraper(config.scraper_config)
 
-    def fetch_odds_from_url(self, url: str) -> dict[str, Any]:
-        """Fetch and extract odds from a DraftKings URL.
+    def fetch_odds_from_api(self, event_id: str) -> dict[str, Any]:
+        """Fetch odds from DraftKings JSON API.
 
         Args:
-            url: DraftKings event URL
+            event_id: DraftKings event ID
 
         Returns:
             Dictionary with game info and odds
@@ -99,40 +99,62 @@ class OddsScraper:
             OddsFetchError: If fetching fails
             OddsParseError: If parsing fails
         """
-        logger.info(f"Fetching odds from {url}")
+        api_url = f"https://sportsbook-nash.draftkings.com/api/sportscontent/dkusnj/v1/events/{event_id}/categories"
+        logger.info(f"Fetching odds from API for event {event_id}")
 
         try:
-            with self.web_scraper.launch() as page:
-                self.web_scraper.navigate_and_wait(page, url)
+            data = self.scraper.fetch_json(api_url)
 
-                # Extract stadium data directly via JavaScript
-                stadium_data = page.evaluate("""
-                    () => {
-                        if (window.__INITIAL_STATE__ && window.__INITIAL_STATE__.stadiumEventData) {
-                            return window.__INITIAL_STATE__.stadiumEventData;
-                        }
-                        return null;
-                    }
-                """)
+            if not data:
+                raise OddsFetchError(
+                    "Empty response from DraftKings API",
+                    context={"event_id": event_id, "url": api_url}
+                )
 
-                if not stadium_data:
-                    raise OddsFetchError(
-                        "Could not extract stadium data from page",
-                        context={"url": url}
-                    )
-
-                return self._extract_odds_from_data(stadium_data)
+            return self._extract_odds_from_api_data(data, event_id)
 
         except OddsParseError:
             raise
         except Exception as e:
             raise OddsFetchError(
-                f"Failed to fetch odds: {e}",
-                context={"url": url, "error": str(e)}
+                f"Failed to fetch odds from API: {e}",
+                context={"event_id": event_id, "error": str(e)}
             )
+
+    def fetch_odds_from_url(self, url: str) -> dict[str, Any]:
+        """Fetch odds from a DraftKings event URL.
+
+        Extracts event ID from URL and fetches from API.
+
+        Args:
+            url: DraftKings event URL (e.g., https://sportsbook.draftkings.com/event/...)
+
+        Returns:
+            Dictionary with game info and odds
+
+        Raises:
+            OddsFetchError: If URL parsing or fetching fails
+        """
+        import re
+
+        # Extract event ID from URL
+        # URL formats:
+        # https://sportsbook.draftkings.com/event/nyg-dal/28937481
+        # https://sportsbook.draftkings.com/event/28937481
+        match = re.search(r'/event/(?:[^/]+/)?(\d+)', url)
+        if not match:
+            raise OddsFetchError(
+                "Could not extract event ID from URL",
+                context={"url": url}
+            )
+
+        event_id = match.group(1)
+        return self.fetch_odds_from_api(event_id)
 
     def extract_odds_from_file(self, html_path: str | Path) -> dict[str, Any]:
         """Extract odds from a saved DraftKings HTML file.
+
+        Legacy support for HTML files that contain embedded JSON data.
 
         Args:
             html_path: Path to the HTML file
@@ -161,7 +183,7 @@ class OddsScraper:
     def extract_odds_from_data(self, stadium_data: dict) -> dict[str, Any]:
         """Extract odds from stadium data dictionary.
 
-        Public method for when you have the data from page.evaluate().
+        Public method for when you have the data already.
 
         Args:
             stadium_data: The stadiumEventData dictionary from DraftKings
@@ -171,11 +193,51 @@ class OddsScraper:
         """
         return self._extract_odds_from_data(stadium_data)
 
+    def _extract_odds_from_api_data(self, api_data: dict, event_id: str) -> dict[str, Any]:
+        """Extract odds from DraftKings API response.
+
+        Args:
+            api_data: API response data
+            event_id: Event ID for context
+
+        Returns:
+            Dictionary with game info and odds
+        """
+        # API response has different structure than HTML stadiumEventData
+        # Need to adapt parsing based on actual API response
+        events = api_data.get("events", [])
+        markets = api_data.get("markets", [])
+        selections = api_data.get("selections", [])
+
+        if not events:
+            raise OddsParseError(
+                "No event data found in API response",
+                context={"event_id": event_id}
+            )
+
+        event = events[0]
+        logger.info(f"Found {len(markets)} markets, {len(selections)} selections")
+
+        result = {
+            "sport": self.sport,
+            "teams": self.parser.extract_teams(event),
+            "game_date": event.get("startEventDate"),
+            "fetched_at": get_eastern_now().isoformat(),
+            "source": self.config.source,
+            "game_lines": self._extract_game_lines(event_id, markets, selections),
+            "player_props": self._extract_player_props(event_id, markets, selections),
+        }
+
+        logger.info(f"Extracted {len(result['game_lines'])} game lines")
+        logger.info(f"Extracted {len(result['player_props'])} player prop markets")
+
+        return result
+
     def _extract_odds_from_data(self, stadium_data: dict) -> dict[str, Any]:
         """Extract odds from stadiumEventData dict.
 
         Args:
-            stadium_data: The stadiumEventData dictionary from DraftKings
+            stadium_data: The stadiumEventData dictionary from DraftKings HTML
 
         Returns:
             Dictionary with game info and odds
@@ -195,7 +257,6 @@ class OddsScraper:
 
         logger.info(f"Found {len(markets)} markets, {len(selections)} selections")
 
-        # Build result structure
         result = {
             "sport": self.sport,
             "teams": self.parser.extract_teams(event),
@@ -217,16 +278,7 @@ class OddsScraper:
         markets: list[dict],
         selections: list[dict]
     ) -> dict[str, Any]:
-        """Extract moneyline, spread, and total game lines.
-
-        Args:
-            event_id: Event ID to filter by
-            markets: All markets
-            selections: All selections
-
-        Returns:
-            Dictionary with game lines
-        """
+        """Extract moneyline, spread, and total game lines."""
         game_lines = {}
 
         for market in markets:
@@ -250,16 +302,7 @@ class OddsScraper:
         markets: list[dict],
         selections: list[dict]
     ) -> list[dict]:
-        """Extract player prop markets.
-
-        Args:
-            event_id: Event ID to filter by
-            markets: All markets
-            selections: All selections
-
-        Returns:
-            List of player prop dictionaries
-        """
+        """Extract player prop markets."""
         player_markets: dict[str, dict] = {}
 
         for market in markets:
@@ -334,7 +377,6 @@ class OddsScraper:
         if not market_selections:
             return
 
-        # Get player info
         player_info = self.parser.extract_player_info(market_selections)
         if not player_info:
             return
@@ -351,12 +393,10 @@ class OddsScraper:
                 "props": []
             }
 
-        # Get prop name from market type
         prop_name = MARKET_NAME_MAP.get(market_type)
         if not prop_name:
             return
 
-        # Parse milestones
         milestones = self.parser.parse_milestones(market, all_selections)
         if milestones:
             player_markets[key]["props"].append({

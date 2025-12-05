@@ -1,49 +1,10 @@
 # Main application settings
-# All configurable values are externalized here
-
-# Scraping Configuration
-scraping:
-  # ODDS service scraping settings
-  odds:
-    interval_seconds: 12.0
-    timeout_ms: 30000
-    max_retries: 3
-    retry_delay_seconds: 2.0
-    headless: true
-    wait_time_ms: 2000
-
-  # RESULTS service scraping settings
-  results:
-    interval_seconds: 3.0
-    timeout_ms: 30000
-    max_retries: 3
-    retry_delay_seconds: 2.0
-    headless: true
-    wait_time_ms: 1000
-
-  # PREDICTION service (for profile/rankings scraping)
-  prediction:
-    interval_seconds: 5.0
-    timeout_ms: 30000
-    max_retries: 3
-    retry_delay_seconds: 2.0
-    headless: true
-    wait_time_ms: 1000
-
-  # Rate limits
-  rate_limits:
-    sports_reference:
-      calls: 1
-      period_seconds: 5.0
-    draftkings:
-      calls: 1
-      period_seconds: 2.0
 
 # Claude API Configuration
 api:
   claude:
     model: "claude-sonnet-4-5-20250929"
-    temperature: 0.7
+    temperature: 0.0
     max_tokens: 16000
     input_cost_per_mtok: 3.0
     output_cost_per_mtok: 15.0
@@ -75,3 +36,19 @@ logging:
 errors:
   output_file: "errors.json"
   include_traceback: true
+
+# Betting Configuration
+betting:
+  fixed_bet_amount: 100  # Default bet amount in dollars for P&L calculations
+
+# Season Configuration (per sport)
+seasons:
+  nfl: 2025
+  nba: 2026
+  bundesliga: "2025-2026"
+
+# Scraping Configuration
+scraping:
+  sports_reference:
+    rate_limit_calls: 20  # Max calls per period
+    rate_limit_period: 60  # Period in seconds

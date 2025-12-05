@@ -1,21 +1,53 @@
 """NFL-specific configuration implementing SportConfig interface."""
 
 from shared.base.sport_config import SportConfig
+from config import settings
 from sports.nfl.teams import TEAMS
-from sports.nfl.constants import (
-    CURRENT_YEAR,
-    PFR_RATE_LIMIT_CALLS,
-    PFR_RATE_LIMIT_PERIOD,
-    NFL_STATS_URL,
-    NFL_DEFENSIVE_STATS_URL,
-    RANKING_TABLES,
-    DEFENSIVE_RANKING_TABLES,
-    TEAM_PROFILE_TABLES,
+from sports.nfl.tables import (
+    RANKINGS_TABLES,
+    DEFENSE_TABLES,
+    PROFILE_TABLES,
     RESULT_TABLES,
-    DATA_RANKINGS_DIR,
-    DATA_PROFILES_DIR,
+    RANKINGS_URL,
+    DEFENSE_URL,
 )
 from sports.nfl.prompt_components import NFLPromptComponents
+
+
+# NFL Season Year (loaded from config/settings.yaml via CURRENT_YEAR property)
+NFL_SEASON_YEAR = 2025
+
+# Odds market types for DraftKings scraping
+NFL_ODDS_MARKET_TYPES = {
+    # Game lines
+    "game_lines": ["Moneyline", "Spread", "Total"],
+    # Player props - Passing
+    "passing_props": [
+        "Passing Yards Milestones",
+        "Passing Touchdowns Milestones",
+        "Pass Completions Milestones",
+        "Pass Attempts Milestones",
+    ],
+    # Player props - Rushing
+    "rushing_props": [
+        "Rushing Yards Milestones",
+        "Rushing Attempts Milestones",
+        "Rushing + Receiving Yards Milestones",
+    ],
+    # Player props - Receiving
+    "receiving_props": [
+        "Receiving Yards Milestones",
+        "Receptions Milestones",
+    ],
+    # Touchdown scorers
+    "touchdown_props": ["Anytime Touchdown Scorer"],
+    # Defensive props
+    "defensive_props": [
+        "Sacks Milestones",
+        "Tackles + Assists Milestones",
+        "Interceptions Milestones",
+    ],
+}
 
 
 class NFLConfig(SportConfig):
@@ -26,16 +58,20 @@ class NFLConfig(SportConfig):
         return "nfl"
 
     @property
+    def season_year(self) -> int:
+        return NFL_SEASON_YEAR
+
+    @property
     def teams(self) -> list[dict]:
         return TEAMS
 
     @property
-    def ranking_tables(self) -> dict[str, str]:
-        return RANKING_TABLES
+    def ranking_tables(self) -> dict:
+        return RANKINGS_TABLES
 
     @property
-    def profile_tables(self) -> dict[str, str]:
-        return TEAM_PROFILE_TABLES
+    def profile_tables(self) -> dict:
+        return PROFILE_TABLES
 
     @property
     def result_tables(self) -> dict[str, str]:
@@ -43,31 +79,35 @@ class NFLConfig(SportConfig):
 
     @property
     def stats_url(self) -> str:
-        return NFL_STATS_URL
+        return RANKINGS_URL
 
     @property
     def defensive_stats_url(self) -> str:
-        return NFL_DEFENSIVE_STATS_URL
+        return DEFENSE_URL
 
     @property
-    def defensive_ranking_tables(self) -> dict[str, str]:
-        return DEFENSIVE_RANKING_TABLES
+    def defensive_ranking_tables(self) -> dict:
+        return DEFENSE_TABLES
 
     @property
     def rate_limit_calls(self) -> int:
-        return PFR_RATE_LIMIT_CALLS
+        return settings['scraping']['sports_reference']['rate_limit_calls']
 
     @property
     def rate_limit_period(self) -> int:
-        return PFR_RATE_LIMIT_PERIOD
+        return settings['scraping']['sports_reference']['rate_limit_period']
+
+    @property
+    def odds_market_types(self) -> dict:
+        return NFL_ODDS_MARKET_TYPES
 
     @property
     def data_rankings_dir(self) -> str:
-        return DATA_RANKINGS_DIR
+        return "sports/nfl/data/rankings"
 
     @property
     def data_profiles_dir(self) -> str:
-        return DATA_PROFILES_DIR
+        return "sports/nfl/data/profiles"
 
     @property
     def predictions_dir(self) -> str:
@@ -102,7 +142,7 @@ class NFLConfig(SportConfig):
         Returns:
             Complete URL for the team's page
         """
-        return f"https://www.pro-football-reference.com/teams/{team_abbr}/{CURRENT_YEAR}.htm"
+        return f"https://www.pro-football-reference.com/teams/{team_abbr}/{NFL_SEASON_YEAR}.htm"
 
     def build_boxscore_url(self, game_date: str, home_team_abbr: str) -> str:
         """Build NFL boxscore URL using Pro-Football-Reference pattern.

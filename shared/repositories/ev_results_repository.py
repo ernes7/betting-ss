@@ -4,7 +4,7 @@ import os
 from typing import Dict, List, Optional
 from datetime import datetime
 from shared.repositories.base_repository import BaseRepository
-from shared.config import get_data_path, get_file_path
+from shared.utils.path_utils import get_data_path, get_file_path
 
 
 class EVResultsRepository(BaseRepository):

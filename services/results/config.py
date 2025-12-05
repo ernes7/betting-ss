@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Dict
 
-from shared.scraping import ScraperConfig, RESULTS_SCRAPER_CONFIG
+from shared.scraping import ScraperConfig, PFR_CONFIG
 
 
 @dataclass(frozen=True)
@@ -11,12 +11,12 @@ class ResultsServiceConfig:
     """Configuration for the RESULTS service.
 
     Attributes:
-        scraper_config: Scraping configuration (intervals, timeouts)
+        scraper_config: Scraping configuration (delays, timeouts)
         data_root: Root directory for results data
         result_tables: Mapping of table names to HTML IDs for extraction
     """
-    scraper_config: ScraperConfig = field(default_factory=lambda: RESULTS_SCRAPER_CONFIG)
-    data_root: str = "{sport}/data/results"
+    scraper_config: ScraperConfig = field(default_factory=lambda: PFR_CONFIG)
+    data_root: str = "sports/{sport}/data/results"
     result_tables: Dict[str, str] = field(default_factory=dict)
 
 

@@ -1,95 +1,61 @@
-"""Scraper configuration dataclass for constructor injection."""
+"""Scraper configuration dataclass."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class ScraperConfig:
-    """Configuration for web scraping operations.
-
-    All scraping parameters are configurable via constructor injection.
-    Different services can pass their own configurations.
+    """Configuration for scraping operations.
 
     Example:
-        odds_config = ScraperConfig(
-            interval_seconds=12.0,
-            timeout_ms=30000,
-            max_retries=3
-        )
-        results_config = ScraperConfig(
-            interval_seconds=3.0,
-            timeout_ms=30000,
-            max_retries=3
-        )
+        config = ScraperConfig(delay_seconds=3.0, timeout=30)
+        scraper = Scraper(config)
     """
-    interval_seconds: float = 5.0
-    timeout_ms: int = 30000
+
+    delay_seconds: float = 3.0
+    """Fixed delay between requests (rate limiting)."""
+
+    timeout: int = 30
+    """Request timeout in seconds."""
+
     max_retries: int = 3
-    retry_delay_seconds: float = 2.0
-    headless: bool = True
-    wait_time_ms: int = 1000
+    """Number of retries on failure."""
+
+    user_agent: str = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
+    """User-Agent header for requests."""
+
+    extract_comments: bool = True
+    """Whether to extract tables from HTML comments (for PFR hidden tables)."""
 
     def __post_init__(self):
         """Validate configuration values."""
-        if self.interval_seconds < 0:
-            raise ValueError("interval_seconds must be non-negative")
-        if self.timeout_ms <= 0:
-            raise ValueError("timeout_ms must be positive")
+        if self.delay_seconds < 0:
+            raise ValueError("delay_seconds must be non-negative")
+        if self.timeout <= 0:
+            raise ValueError("timeout must be positive")
         if self.max_retries < 0:
             raise ValueError("max_retries must be non-negative")
-        if self.retry_delay_seconds < 0:
-            raise ValueError("retry_delay_seconds must be non-negative")
-        if self.wait_time_ms < 0:
-            raise ValueError("wait_time_ms must be non-negative")
 
 
-@dataclass(frozen=True)
-class RateLimitConfig:
-    """Configuration for rate limiting.
-
-    Example:
-        sports_ref_limit = RateLimitConfig(calls=1, period_seconds=5.0)
-        draftkings_limit = RateLimitConfig(calls=1, period_seconds=2.0)
-    """
-    calls: int = 1
-    period_seconds: float = 5.0
-
-    def __post_init__(self):
-        """Validate configuration values."""
-        if self.calls <= 0:
-            raise ValueError("calls must be positive")
-        if self.period_seconds <= 0:
-            raise ValueError("period_seconds must be positive")
-
-
-# Default configurations for different services
-ODDS_SCRAPER_CONFIG = ScraperConfig(
-    interval_seconds=12.0,
-    timeout_ms=30000,
-    max_retries=3,
-    retry_delay_seconds=2.0,
-    headless=True,
-    wait_time_ms=2000
+# Default configurations for different sources
+PFR_CONFIG = ScraperConfig(
+    delay_seconds=3.0,
+    timeout=30,
+    extract_comments=True,
 )
 
-RESULTS_SCRAPER_CONFIG = ScraperConfig(
-    interval_seconds=3.0,
-    timeout_ms=30000,
-    max_retries=3,
-    retry_delay_seconds=2.0,
-    headless=True,
-    wait_time_ms=1000
+DRAFTKINGS_CONFIG = ScraperConfig(
+    delay_seconds=1.0,
+    timeout=15,
+    extract_comments=False,
 )
 
-PREDICTIONS_SCRAPER_CONFIG = ScraperConfig(
-    interval_seconds=5.0,
-    timeout_ms=30000,
-    max_retries=3,
-    retry_delay_seconds=2.0,
-    headless=True,
-    wait_time_ms=1000
+FBREF_CONFIG = ScraperConfig(
+    delay_seconds=3.0,
+    timeout=30,
+    extract_comments=True,
 )
-
-# Rate limit configurations
-SPORTS_REFERENCE_RATE_LIMIT = RateLimitConfig(calls=1, period_seconds=5.0)
-DRAFTKINGS_RATE_LIMIT = RateLimitConfig(calls=1, period_seconds=2.0)

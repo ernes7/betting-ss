@@ -11,7 +11,7 @@ from theme import AI_GRADIENT_BG, AI_BORDER_COLOR, EV_GRADIENT_BG, EV_BORDER_COL
 
 # Add project root to path for sports imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from sports.nfl.constants import FIXED_BET_AMOUNT
+from config import settings
 
 
 def _calculate_system_metrics(predictions: list[dict], system_key: str) -> dict:
@@ -68,7 +68,7 @@ def _calculate_system_metrics(predictions: list[dict], system_key: str) -> dict:
         total_bets_won += summary.get('bets_won', 0)
 
     win_rate = (total_bets_won / total_bets * 100) if total_bets > 0 else 0
-    total_risk = total_bets * FIXED_BET_AMOUNT if total_bets > 0 else 1
+    total_risk = total_bets * settings['betting']['fixed_bet_amount'] if total_bets > 0 else 1
     roi = (total_profit / total_risk * 100) if total_risk > 0 else 0
 
     return {
@@ -107,7 +107,7 @@ def render_metrics(predictions: list[dict]):
             <div style='text-align: center;'>
                 <div style='font-size: 0.9rem; color: rgba(255,255,255,0.8);'>Total Profit/Loss</div>
                 <div style='font-size: 2rem; font-weight: 700; color: {profit_color};'>${ai_metrics['total_profit']:+.2f}</div>
-                <div style='font-size: 0.75rem; color: rgba(255,255,255,0.6);'>Fixed ${FIXED_BET_AMOUNT} per bet</div>
+                <div style='font-size: 0.75rem; color: rgba(255,255,255,0.6);'>Fixed ${settings['betting']['fixed_bet_amount']} per bet</div>
             </div>
         """, unsafe_allow_html=True)
 
@@ -152,7 +152,7 @@ def render_metrics(predictions: list[dict]):
             <div style='text-align: center;'>
                 <div style='font-size: 0.9rem; color: rgba(255,255,255,0.8);'>Total Profit/Loss</div>
                 <div style='font-size: 2rem; font-weight: 700; color: {profit_color};'>${ev_metrics['total_profit']:+.2f}</div>
-                <div style='font-size: 0.75rem; color: rgba(255,255,255,0.6);'>Fixed ${FIXED_BET_AMOUNT} per bet</div>
+                <div style='font-size: 0.75rem; color: rgba(255,255,255,0.6);'>Fixed ${settings['betting']['fixed_bet_amount']} per bet</div>
             </div>
         """, unsafe_allow_html=True)
 

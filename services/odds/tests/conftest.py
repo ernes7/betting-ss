@@ -20,12 +20,9 @@ from shared.scraping import ScraperConfig
 def test_scraper_config() -> ScraperConfig:
     """Fast scraper config for tests."""
     return ScraperConfig(
-        interval_seconds=0.1,
-        timeout_ms=5000,
+        delay_seconds=0.1,
+        timeout=5,
         max_retries=1,
-        retry_delay_seconds=0.1,
-        headless=True,
-        wait_time_ms=100,
     )
 
 

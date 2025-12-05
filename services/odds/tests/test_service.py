@@ -38,51 +38,56 @@ class TestOddsServiceSave:
     """Tests for OddsService.save_odds()."""
 
     def test_save_odds_basic(self, odds_service, sample_odds_data):
-        """Test basic save functionality."""
-        filepath = odds_service.save_odds(sample_odds_data)
+        """Test basic save functionality - creates directory with CSV files."""
+        game_dir = odds_service.save_odds(sample_odds_data)
 
-        assert filepath.exists()
-        assert filepath.name == "dal_nyg.json"
-        assert "2024-12-01" in str(filepath)
+        assert game_dir.exists()
+        assert game_dir.is_dir()
+        assert game_dir.name == "dal_nyg"
+        assert "2024-12-01" in str(game_dir)
 
-        # Verify content
-        saved_data = json.loads(filepath.read_text())
-        assert saved_data["sport"] == "nfl"
-        assert saved_data["teams"]["home"]["abbr"] == "DAL"
+        # Verify CSV files were created
+        assert (game_dir / "game_lines.csv").exists()
+        assert (game_dir / "player_props.csv").exists()
 
     def test_save_odds_creates_directory(self, odds_service, sample_odds_data):
         """Test that save creates necessary directories."""
-        filepath = odds_service.save_odds(sample_odds_data)
+        game_dir = odds_service.save_odds(sample_odds_data)
 
-        assert filepath.parent.exists()
-        assert filepath.parent.name == "2024-12-01"
+        assert game_dir.parent.exists()
+        assert game_dir.parent.name == "2024-12-01"
 
     def test_save_odds_with_explicit_params(self, odds_service, sample_odds_data):
         """Test save with explicit game_date and team params."""
-        filepath = odds_service.save_odds(
+        game_dir = odds_service.save_odds(
             sample_odds_data,
             game_date="2024-12-15",
             home_team="phi",
             away_team="was"
         )
 
-        assert filepath.name == "phi_was.json"
-        assert "2024-12-15" in str(filepath)
+        assert game_dir.is_dir()
+        assert game_dir.name == "phi_was"
+        assert "2024-12-15" in str(game_dir)
 
     def test_save_odds_overwrites_existing(self, odds_service, sample_odds_data):
-        """Test that saving overwrites existing file."""
+        """Test that saving overwrites existing CSV files."""
+        import pandas as pd
+
         # Save first time
-        filepath = odds_service.save_odds(sample_odds_data)
-        original_content = filepath.read_text()
+        game_dir = odds_service.save_odds(sample_odds_data)
+        original_df = pd.read_csv(game_dir / "game_lines.csv")
+        original_ml = original_df.iloc[0]["ml_home"]
 
         # Modify and save again
         sample_odds_data["game_lines"]["moneyline"]["home"] = -200
-        filepath2 = odds_service.save_odds(sample_odds_data)
+        game_dir2 = odds_service.save_odds(sample_odds_data)
 
-        assert filepath == filepath2
-        new_content = filepath.read_text()
-        assert original_content != new_content
-        assert "-200" in new_content
+        assert game_dir == game_dir2
+        new_df = pd.read_csv(game_dir / "game_lines.csv")
+        new_ml = new_df.iloc[0]["ml_home"]
+        assert original_ml != new_ml
+        assert new_ml == -200
 
 
 class TestOddsServiceLoad:
@@ -170,8 +175,9 @@ class TestOddsServiceQuery:
         files = odds_service.get_odds_files_for_date("2024-12-01")
 
         assert len(files) == 1
-        filepath, display_name = files[0]
-        assert filepath.name == "dal_nyg.json"
+        game_dir, display_name = files[0]
+        assert game_dir.name == "dal_nyg"
+        assert game_dir.is_dir()
         assert display_name == "DAL vs NYG"
 
     def test_get_odds_files_for_date_empty(self, odds_service):
