@@ -40,6 +40,7 @@ class CLIOrchestrator:
 
         # Lazy-loaded services
         self._odds_service = None
+        self._stats_service = None
         self._prediction_service = None
         self._results_service = None
         self._analysis_service = None
@@ -49,8 +50,40 @@ class CLIOrchestrator:
         """Get or create odds service (lazy loading)."""
         if self._odds_service is None:
             from services.odds import OddsService
-            self._odds_service = OddsService(sport=self.sport)
+            config = self._get_odds_config()
+            self._odds_service = OddsService(sport=self.sport, config=config)
         return self._odds_service
+
+    def _get_odds_config(self):
+        """Get odds config for the current sport."""
+        if self.sport == "nfl":
+            from sports.nfl.nfl_config import get_nfl_odds_config
+            return get_nfl_odds_config()
+        elif self.sport == "bundesliga":
+            from sports.futbol.bundesliga.bundesliga_config import get_bundesliga_odds_config
+            return get_bundesliga_odds_config()
+        else:
+            raise ValueError(f"Odds config not available for sport: {self.sport}")
+
+    @property
+    def stats_service(self):
+        """Get or create stats service (lazy loading)."""
+        if self._stats_service is None:
+            from services.stats import StatsService
+            config = self._get_stats_config()
+            self._stats_service = StatsService(sport=self.sport, config=config)
+        return self._stats_service
+
+    def _get_stats_config(self):
+        """Get stats config for the current sport."""
+        if self.sport == "nfl":
+            from sports.nfl.nfl_config import get_nfl_stats_config
+            return get_nfl_stats_config()
+        elif self.sport == "bundesliga":
+            from sports.futbol.bundesliga.bundesliga_config import get_bundesliga_stats_config
+            return get_bundesliga_stats_config()
+        else:
+            raise ValueError(f"Stats config not available for sport: {self.sport}")
 
     @property
     def results_service(self):

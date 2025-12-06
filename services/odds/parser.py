@@ -269,9 +269,16 @@ class DraftKingsParser:
             if participant.get("type") != "Team":
                 continue
 
+            name = participant.get("name", "")
+            # Try shortName (NFL), fallback to slugified name (soccer)
+            abbr = participant.get("metadata", {}).get("shortName")
+            if not abbr and name:
+                # Create slug from name: "Bayern Munchen" -> "bayern_mun"
+                abbr = name.lower().replace(" ", "_")[:10]
+
             team_info = {
-                "name": participant.get("name"),
-                "abbr": participant.get("metadata", {}).get("shortName")
+                "name": name,
+                "abbr": abbr
             }
 
             venue_role = participant.get("venueRole")

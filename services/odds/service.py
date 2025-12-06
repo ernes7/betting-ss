@@ -1,14 +1,14 @@
-"""ODDS Service - Fetches and manages betting odds.
+"""ODDS Service - Sport-agnostic odds fetching and storage.
 
-This service is responsible for:
-- Fetching odds from DraftKings (via URL or saved HTML)
-- Saving odds to the data directory as CSV files
-- Loading and querying existing odds
-- Providing odds data to other services
+This service is a black box that:
+- Takes sport configuration as input (API URLs, market mappings)
+- Fetches odds from DraftKings
+- Outputs CSV files (game_lines.csv, player_props.csv)
 
-All dependencies are injected via constructor.
+All sport-specific details come from the config parameter.
 """
 
+import csv
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, List, Tuple
@@ -25,7 +25,7 @@ from shared.errors import (
 )
 from shared.models import Odds
 
-from services.odds.config import OddsServiceConfig, get_default_config
+from services.odds.config import OddsServiceConfig
 from services.odds.scraper import OddsScraper
 
 
@@ -33,20 +33,22 @@ logger = get_logger("odds")
 
 
 class OddsService:
-    """Service for fetching and managing betting odds.
+    """Sport-agnostic service for fetching and managing betting odds.
 
+    This is a black box - all sport-specific details come from the config.
     Uses constructor injection for all dependencies.
-    Fail-fast error handling with errors.json output.
 
     Example:
-        # Create service with default config
-        service = OddsService(sport="nfl")
+        from sports.nfl.nfl_config import get_nfl_odds_config
+
+        config = get_nfl_odds_config()
+        service = OddsService(sport="nfl", config=config)
 
         # Fetch odds from URL
         odds = service.fetch_from_url(url)
 
-        # Save odds
-        path = service.save_odds(odds, game_date="2024-12-01")
+        # Save odds as CSV
+        path = service.save_odds(odds)
 
         # Load existing odds
         odds = service.load_odds("2024-12-01", "dal", "nyg")
@@ -55,20 +57,20 @@ class OddsService:
     def __init__(
         self,
         sport: str,
-        config: OddsServiceConfig | None = None,
+        config: OddsServiceConfig,
         scraper: OddsScraper | None = None,
         error_handler: ErrorHandler | None = None,
     ):
         """Initialize the ODDS service.
 
         Args:
-            sport: Sport name (nfl, nba)
-            config: Service configuration (uses defaults if not provided)
+            sport: Sport identifier (e.g., 'nfl', 'bundesliga')
+            config: Service configuration with API URLs and market mappings (required)
             scraper: OddsScraper instance (created if not provided)
             error_handler: ErrorHandler instance (created if not provided)
         """
         self.sport = sport.lower()
-        self.config = config or get_default_config(self.sport)
+        self.config = config
         self.scraper = scraper or OddsScraper(self.config, self.sport)
         self.error_handler = error_handler or ErrorHandler("odds")
 
@@ -77,11 +79,20 @@ class OddsService:
 
         logger.info(f"OddsService initialized for {self.sport}")
 
-    def fetch_from_url(self, url: str) -> dict[str, Any]:
+    def fetch_from_url(
+        self,
+        url: str,
+        matchup: str | None = None,
+        skip_if_exists: bool = True,
+        date: str | None = None,
+    ) -> dict[str, Any]:
         """Fetch odds from a DraftKings URL.
 
         Args:
             url: DraftKings event URL
+            matchup: Matchup string for cache checking (e.g., "Team1 vs Team2")
+            skip_if_exists: If True and matchup provided, load from cache if exists
+            date: Date to check (defaults to today)
 
         Returns:
             Dictionary with game info and odds
@@ -90,6 +101,15 @@ class OddsService:
             OddsFetchError: If fetching fails
             OddsParseError: If parsing fails
         """
+        if date is None:
+            date = datetime.now().strftime("%Y-%m-%d")
+
+        # Check cache if matchup provided
+        if skip_if_exists and matchup:
+            if self.odds_exist(date, matchup):
+                logger.info(f"Odds already exist for {matchup} on {date}, loading from cache")
+                return self.load_odds(date, matchup)
+
         try:
             return self.scraper.fetch_odds_from_url(url)
         except (OddsFetchError, OddsParseError) as e:
@@ -128,6 +148,67 @@ class OddsService:
             return self.scraper.extract_odds_from_data(stadium_data)
         except OddsParseError as e:
             self.error_handler.handle(e)
+
+    def fetch_schedule(self) -> list[dict[str, Any]]:
+        """Fetch upcoming games schedule from league API.
+
+        Returns:
+            List of upcoming games with event_id, matchup, start_date
+
+        Raises:
+            OddsFetchError: If league_url not configured or fetch fails
+        """
+        try:
+            return self.scraper.fetch_schedule()
+        except OddsFetchError as e:
+            self.error_handler.handle(e)
+
+    def save_schedule(
+        self,
+        games: list[dict[str, Any]],
+        filename: str = "schedule.csv",
+    ) -> Path:
+        """Save schedule to CSV.
+
+        Args:
+            games: List of game dictionaries
+            filename: Output filename
+
+        Returns:
+            Path to saved CSV file
+        """
+        schedule_path = self.data_root / filename
+        schedule_path.parent.mkdir(parents=True, exist_ok=True)
+
+        df = pd.DataFrame(games)
+        df.to_csv(schedule_path, index=False)
+
+        logger.info(f"Saved schedule with {len(games)} games to {schedule_path}")
+        return schedule_path
+
+    def load_schedule(self, filename: str = "schedule.csv") -> list[dict[str, Any]]:
+        """Load schedule from CSV.
+
+        Args:
+            filename: Input filename
+
+        Returns:
+            List of game dictionaries
+
+        Raises:
+            DataNotFoundError: If schedule file not found
+        """
+        schedule_path = self.data_root / filename
+
+        if not schedule_path.exists():
+            raise DataNotFoundError(
+                "Schedule not found",
+                context={"path": str(schedule_path)}
+            )
+
+        # Read with event_id as string to preserve format for API calls
+        df = pd.read_csv(schedule_path, dtype={"event_id": str})
+        return df.to_dict("records")
 
     def save_odds(
         self,
@@ -213,13 +294,24 @@ class OddsService:
                 team = player_prop.get("team", "")
                 for prop in player_prop.get("props", []):
                     market = prop.get("market", "")
-                    for milestone in prop.get("milestones", []):
+                    if "milestones" in prop:
+                        # Milestone format (e.g., shots_on_target with multiple lines)
+                        for milestone in prop.get("milestones", []):
+                            props_rows.append({
+                                "player": player,
+                                "team": team,
+                                "market": market,
+                                "line": milestone.get("line"),
+                                "odds": milestone.get("odds"),
+                            })
+                    elif "odds" in prop:
+                        # Simple format (e.g., anytime_goalscorer with single odds)
                         props_rows.append({
                             "player": player,
                             "team": team,
                             "market": market,
-                            "line": milestone.get("line"),
-                            "odds": milestone.get("odds"),
+                            "line": None,
+                            "odds": prop.get("odds"),
                         })
 
             if props_rows:
@@ -229,6 +321,23 @@ class OddsService:
                 pd.DataFrame(columns=["player", "team", "market", "line", "odds"]).to_csv(
                     game_dir / "player_props.csv", index=False
                 )
+
+            # Save game_props.csv
+            game_props_rows = []
+            for game_prop in odds_data.get("game_props", []):
+                market = game_prop.get("market", "")
+                market_name = game_prop.get("market_name", "")
+                for sel in game_prop.get("selections", []):
+                    game_props_rows.append({
+                        "market": market,
+                        "market_name": market_name,
+                        "label": sel.get("label"),
+                        "line": sel.get("line"),
+                        "odds": sel.get("odds"),
+                    })
+
+            if game_props_rows:
+                pd.DataFrame(game_props_rows).to_csv(game_dir / "game_props.csv", index=False)
 
             logger.info(f"Saved odds to {game_dir}")
             return game_dir
@@ -433,6 +542,15 @@ class OddsService:
 
         return sorted(dates, reverse=True)
 
+    def _format_team_name(self, name: str) -> str:
+        """Format team name for display using centralized teams.py."""
+        if self.sport == "bundesliga":
+            from sports.futbol.bundesliga.teams import find_team_by_name
+            team_info = find_team_by_name(name)
+            if team_info:
+                return team_info["name"].upper()
+        return name.replace("_", " ").upper()
+
     def get_odds_files_for_date(self, game_date: str) -> List[Tuple[Path, str]]:
         """Get list of odds directories available for a specific date.
 
@@ -449,12 +567,22 @@ class OddsService:
 
         odds_dirs = []
         for game_dir in date_dir.iterdir():
-            if game_dir.is_dir() and (game_dir / "game_lines.csv").exists():
-                teams = game_dir.name.split("_")
-                if len(teams) == 2:
-                    display_name = f"{teams[0].upper()} vs {teams[1].upper()}"
-                else:
+            game_lines_file = game_dir / "game_lines.csv"
+            if game_dir.is_dir() and game_lines_file.exists():
+                # Read team names from CSV instead of parsing folder name
+                try:
+                    with open(game_lines_file, 'r') as f:
+                        reader = csv.DictReader(f)
+                        first_row = next(reader, None)
+                        if first_row:
+                            home = self._format_team_name(first_row.get('home_team', ''))
+                            away = self._format_team_name(first_row.get('away_team', ''))
+                            display_name = f"{away} @ {home}"
+                        else:
+                            display_name = game_dir.name
+                except Exception:
                     display_name = game_dir.name
+
                 odds_dirs.append((game_dir, display_name))
 
         return sorted(odds_dirs, key=lambda x: x[1])
@@ -473,12 +601,16 @@ class OddsService:
 
         for game_dir, _ in odds_dirs:
             try:
-                # Extract home and away from directory name
-                teams = game_dir.name.split("_")
-                if len(teams) == 2:
-                    home_team, away_team = teams[0], teams[1]
-                    odds_data = self.load_odds(game_date, home_team, away_team)
-                    all_odds.append(odds_data)
+                # Read team names from CSV instead of parsing folder name
+                game_lines_file = game_dir / "game_lines.csv"
+                with open(game_lines_file, 'r') as f:
+                    reader = csv.DictReader(f)
+                    first_row = next(reader, None)
+                    if first_row:
+                        home_team = first_row.get('home_team', '')
+                        away_team = first_row.get('away_team', '')
+                        odds_data = self.load_odds(game_date, home_team, away_team)
+                        all_odds.append(odds_data)
             except Exception as e:
                 logger.warning(f"Failed to load {game_dir}: {e}")
 

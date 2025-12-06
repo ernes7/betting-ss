@@ -4,9 +4,10 @@ Main entry point for the RESULTS service. Coordinates fetching boxscore
 data and saving results.
 """
 
-import json
-import os
+from pathlib import Path
 from typing import Any, Optional
+
+import pandas as pd
 
 from services.results.config import (
     ResultsServiceConfig,
@@ -17,6 +18,7 @@ from services.results.fetcher import ResultsFetcher
 from services.results.parser import ResultsParser
 from shared.logging import get_logger
 from shared.errors import ErrorHandler, create_error_handler, ResultsFetchError
+from shared.utils.csv_storage import save_csv, load_csv, ensure_directory
 
 
 logger = get_logger("results")
@@ -28,7 +30,7 @@ class ResultsService:
     Orchestrates the results fetching workflow:
     1. Build boxscore URLs for games
     2. Fetch results from sports reference sites
-    3. Save results to JSON files
+    3. Save results to CSV files
     4. Track which results have been fetched
 
     Attributes:
@@ -65,10 +67,10 @@ class ResultsService:
             config=self.config,
         )
         self.error_handler = error_handler or create_error_handler("results")
-        self._results_dir = self.config.data_root.format(sport=self.sport)
+        self._results_dir = Path(self.config.data_root.format(sport=self.sport))
 
     @property
-    def results_dir(self) -> str:
+    def results_dir(self) -> Path:
         """Get the results data directory path."""
         return self._results_dir
 
@@ -129,8 +131,8 @@ class ResultsService:
         result_data: dict[str, Any],
         game_key: str,
         game_date: Optional[str] = None,
-    ) -> str:
-        """Save game result to JSON file.
+    ) -> Path:
+        """Save game result to CSV file.
 
         Args:
             result_data: Game result dictionary
@@ -144,16 +146,16 @@ class ResultsService:
             # Extract date from game_key (e.g., "2024-11-24_nyg_dal" -> "2024-11-24")
             game_date = game_key.split("_")[0]
 
-        # Create results directory structure
-        date_dir = os.path.join(self._results_dir, game_date)
-        os.makedirs(date_dir, exist_ok=True)
+        # Extract teams from game_key (e.g., "2024-11-24_nyg_dal" -> "nyg_dal")
+        teams = "_".join(game_key.split("_")[1:])
 
-        # Extract filename from game_key
-        filename = "_".join(game_key.split("_")[1:]) + ".json"
-        filepath = os.path.join(date_dir, filename)
+        # Create game directory: results/{date}/{away}_{home}/
+        game_dir = self._results_dir / game_date / teams
+        ensure_directory(game_dir)
 
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(result_data, f, indent=2, ensure_ascii=False)
+        # Save result.csv
+        filepath = game_dir / "result.csv"
+        save_csv(filepath, result_data)
 
         logger.info(f"Saved result to {filepath}")
         return filepath
@@ -171,14 +173,10 @@ class ResultsService:
         if game_date is None:
             game_date = game_key.split("_")[0]
 
-        filename = "_".join(game_key.split("_")[1:]) + ".json"
-        filepath = os.path.join(self._results_dir, game_date, filename)
+        teams = "_".join(game_key.split("_")[1:])
+        filepath = self._results_dir / game_date / teams / "result.csv"
 
-        if not os.path.exists(filepath):
-            return None
-
-        with open(filepath, "r", encoding="utf-8") as f:
-            return json.load(f)
+        return load_csv(filepath, as_dict=True)
 
     def list_results(self, game_date: str) -> list[str]:
         """List all saved results for a date.
@@ -189,19 +187,19 @@ class ResultsService:
         Returns:
             List of game keys
         """
-        date_dir = os.path.join(self._results_dir, game_date)
+        date_dir = self._results_dir / game_date
 
-        if not os.path.exists(date_dir):
+        if not date_dir.exists():
             return []
 
         results = []
-        for filename in os.listdir(date_dir):
-            if filename.endswith(".json"):
-                # Convert filename back to game_key
-                game_key = f"{game_date}_{filename[:-5]}"
+        for game_dir in date_dir.iterdir():
+            if game_dir.is_dir() and (game_dir / "result.csv").exists():
+                # Convert directory name back to game_key
+                game_key = f"{game_date}_{game_dir.name}"
                 results.append(game_key)
 
-        return results
+        return sorted(results)
 
     def fetch_results_for_date(
         self,

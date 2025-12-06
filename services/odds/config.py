@@ -1,8 +1,14 @@
-"""Configuration for the ODDS service."""
+"""Configuration for the ODDS service.
+
+The odds service is a sport-agnostic black box that:
+- Takes API URLs and market mappings as input
+- Outputs CSV files (game_lines.csv, player_props.csv)
+
+Sport-specific configurations should be defined in sports/{sport}/config.py
+"""
 
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Set
+from typing import Dict, Set
 
 from shared.scraping import ScraperConfig, DRAFTKINGS_CONFIG
 
@@ -11,106 +17,57 @@ from shared.scraping import ScraperConfig, DRAFTKINGS_CONFIG
 class OddsServiceConfig:
     """Configuration for the ODDS service.
 
+    This is a sport-agnostic configuration. All sport-specific details
+    (API URLs, market mappings) must be provided explicitly.
+
     Attributes:
+        api_url_template: API URL template with {event_id} placeholder
+        league_url: League API URL for fetching schedule/upcoming games
+        market_name_map: Mapping from DraftKings market names to prop names
+        included_markets: Market types to include
+        excluded_markets: Market types to explicitly exclude
         scraper_config: Scraping configuration (delays, timeouts)
         data_root: Root directory for odds data
         source: Odds source name (draftkings, etc.)
-        included_markets: Market types to include
-        excluded_markets: Market types to explicitly exclude
+
+    Example:
+        config = OddsServiceConfig(
+            api_url_template="https://sportsbook.draftkings.com/api/.../events/{event_id}/categories",
+            league_url="https://sportsbook.draftkings.com/api/.../leagues/88808",
+            market_name_map={"Passing Yards Milestones": "passing_yards", ...},
+            included_markets={"Moneyline", "Spread", "Total", ...},
+        )
     """
-    scraper_config: ScraperConfig = field(default_factory=lambda: DRAFTKINGS_CONFIG)
-    data_root: str = "sports/{sport}/data/odds"
-    source: str = "draftkings"
+    # API URL template - {event_id} placeholder
+    api_url_template: str = ""
+
+    # League API URL for schedule/upcoming games
+    league_url: str = ""
+
+    # Market name to prop name mapping
+    market_name_map: Dict[str, str] = field(default_factory=dict)
+
+    # Market filters
     included_markets: Set[str] = field(default_factory=set)
     excluded_markets: Set[str] = field(default_factory=set)
 
+    # Market categories for parsing strategy
+    player_prop_markets: Set[str] = field(default_factory=set)  # player-per-selection format
+    milestone_markets: Set[str] = field(default_factory=set)    # milestone/line format
+    game_prop_markets: Set[str] = field(default_factory=set)    # game-level props (BTTS, corners, etc.)
 
-# Default NFL market configuration
-NFL_INCLUDED_MARKETS = {
-    # Game lines
-    "Moneyline",
-    "Spread",
-    "Total",
-    # Player props - Passing
-    "Passing Yards Milestones",
-    "Passing Touchdowns Milestones",
-    "Pass Completions Milestones",
-    "Pass Attempts Milestones",
-    # Player props - Rushing
-    "Rushing Yards Milestones",
-    "Rushing Attempts Milestones",
-    # Player props - Receiving
-    "Receiving Yards Milestones",
-    "Receptions Milestones",
-    "Rushing + Receiving Yards Milestones",
-    # TD scorers
-    "Anytime Touchdown Scorer",
-    # Defensive props
-    "Sacks Milestones",
-    "Tackles + Assists Milestones",
-    "Interceptions Milestones",
-}
+    # Scraper and storage config
+    scraper_config: ScraperConfig = field(default_factory=lambda: DRAFTKINGS_CONFIG)
+    data_root: str = "sports/{sport}/data/odds"
+    source: str = "draftkings"
 
-NFL_EXCLUDED_MARKETS = {
-    "1st Quarter Moneyline",
-    "1st Quarter Spread",
-    "1st Quarter Total",
-    "1st Half Moneyline",
-    "1st Half Spread",
-    "1st Half Total",
-    "1st Drive Result",
-    "DK Squares",
-}
+    def validate(self) -> None:
+        """Validate that required fields are set.
 
-# Default NBA market configuration
-NBA_INCLUDED_MARKETS = {
-    # Game lines
-    "Moneyline",
-    "Spread",
-    "Total",
-    # Player props
-    "Points Milestones",
-    "Rebounds Milestones",
-    "Assists Milestones",
-    "3-Pointers Made Milestones",
-    "Pts + Reb Milestones",
-    "Pts + Ast Milestones",
-    "Reb + Ast Milestones",
-    "Pts + Reb + Ast Milestones",
-    # Special
-    "Double-Double",
-    "Triple-Double",
-    "First Basket",
-}
-
-NBA_EXCLUDED_MARKETS = {
-    "1st Quarter Moneyline",
-    "1st Quarter Spread",
-    "1st Quarter Total",
-    "1st Half Moneyline",
-    "1st Half Spread",
-    "1st Half Total",
-}
-
-
-def get_default_config(sport: str) -> OddsServiceConfig:
-    """Get default configuration for a sport.
-
-    Args:
-        sport: Sport name (nfl, nba)
-
-    Returns:
-        OddsServiceConfig with sport-specific markets
-    """
-    if sport.lower() == "nfl":
-        return OddsServiceConfig(
-            included_markets=NFL_INCLUDED_MARKETS,
-            excluded_markets=NFL_EXCLUDED_MARKETS,
-        )
-    elif sport.lower() == "nba":
-        return OddsServiceConfig(
-            included_markets=NBA_INCLUDED_MARKETS,
-            excluded_markets=NBA_EXCLUDED_MARKETS,
-        )
-    else:
-        return OddsServiceConfig()
+        Raises:
+            ValueError: If required fields are missing
+        """
+        if not self.api_url_template:
+            raise ValueError("OddsServiceConfig requires api_url_template")
+        if not self.market_name_map:
+            raise ValueError("OddsServiceConfig requires market_name_map")

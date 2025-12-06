@@ -1,14 +1,9 @@
 """NBA-specific configuration implementing SportConfig interface."""
 
 from shared.base.sport_config import SportConfig
-from sports.nba.teams import TEAMS
 from sports.nba.constants import (
-    CURRENT_YEAR,
     BBR_RATE_LIMIT_CALLS,
     BBR_RATE_LIMIT_PERIOD,
-    NBA_STATS_URL,
-    NBA_TEAM_URL_PATTERN,
-    RANKING_TABLES,
     TEAM_PROFILE_TABLES,
     DATA_RANKINGS_DIR,
     DATA_PROFILES_DIR,
@@ -24,14 +19,6 @@ class NBAConfig(SportConfig):
         return "nba"
 
     @property
-    def teams(self) -> list[dict]:
-        return TEAMS
-
-    @property
-    def ranking_tables(self) -> dict[str, str]:
-        return RANKING_TABLES
-
-    @property
     def profile_tables(self) -> dict[str, str]:
         return TEAM_PROFILE_TABLES
 
@@ -39,10 +26,6 @@ class NBAConfig(SportConfig):
     def result_tables(self) -> dict[str, str]:
         # TODO: Implement NBA result tables (to be added in future)
         return {}
-
-    @property
-    def stats_url(self) -> str:
-        return NBA_STATS_URL
 
     @property
     def rate_limit_calls(self) -> int:
@@ -75,17 +58,6 @@ class NBAConfig(SportConfig):
     @property
     def prompt_components(self) -> NBAPromptComponents:
         return NBAPromptComponents()
-
-    def build_team_url(self, team_abbr: str) -> str:
-        """Build NBA team URL using Basketball-Reference pattern.
-
-        Args:
-            team_abbr: Basketball-Reference team abbreviation (e.g., "LAL" for Lakers)
-
-        Returns:
-            Complete URL for the team's page
-        """
-        return NBA_TEAM_URL_PATTERN.format(pbr_abbr=team_abbr)
 
     def build_boxscore_url(self, game_date: str, home_team_abbr: str) -> str:
         """Build NBA boxscore URL using Basketball-Reference pattern.

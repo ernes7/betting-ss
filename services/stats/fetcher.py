@@ -1,12 +1,13 @@
-"""Stats fetcher for extracting team rankings and profiles from PFR.
+"""Stats fetcher for extracting team rankings and profiles.
 
-Fetches league-wide rankings and team-specific profiles using pandas-based scraping.
+Sport-agnostic fetcher that extracts HTML tables from sports reference sites.
+All URLs and table configurations come from the StatsServiceConfig.
 """
 
-from typing import Any, Optional, Dict, List
+from typing import Any, Optional, Dict
 import pandas as pd
 
-from services.stats.config import StatsServiceConfig, get_default_config
+from services.stats.config import StatsServiceConfig
 from shared.logging import get_logger
 from shared.errors import StatsFetchError, StatsParseError
 from shared.scraping import Scraper
@@ -14,62 +15,60 @@ from shared.scraping import Scraper
 logger = get_logger("stats")
 
 
-# URLs
-BASE_URL = "https://www.pro-football-reference.com"
-NFL_RANKINGS_URL = f"{BASE_URL}/years/2025/"
-NFL_DEFENSIVE_URL = f"{BASE_URL}/years/2025/opp.htm"
-
-
-def get_team_profile_url(sport: str, team_abbr: str) -> str:
-    """Get team profile URL for a given abbreviation.
-
-    Args:
-        sport: Sport name (nfl, nba)
-        team_abbr: Team abbreviation (e.g., 'dal', 'buf')
-
-    Returns:
-        URL to team profile page
-    """
-    if sport.lower() == "nfl":
-        return f"{BASE_URL}/teams/{team_abbr.lower()}/2025.htm"
-    raise ValueError(f"Unknown sport: {sport}")
-
-
 class StatsFetcher:
-    """Fetcher for extracting stats from PFR pages.
+    """Sport-agnostic fetcher for extracting stats from sports reference sites.
 
-    Uses pandas to extract HTML tables from pro-football-reference.
+    This is a black box that:
+    - Takes URLs and table configs from StatsServiceConfig
+    - Fetches HTML from those URLs
+    - Extracts tables by their HTML IDs
+    - Returns structured data
+
+    The fetcher has no knowledge of specific sports - all sport-specific
+    details come from the config.
 
     Attributes:
-        config: Stats service configuration
-        sport: Sport being fetched (nfl, nba)
-        scraper: Scraper instance
+        config: Stats service configuration with URLs and table mappings
+        sport: Sport identifier (for logging and data paths)
+        scraper: Scraper instance for HTTP requests
 
     Example:
-        fetcher = StatsFetcher(sport="nfl")
+        from sports.nfl.nfl_config import get_nfl_stats_config
+
+        config = get_nfl_stats_config()
+        fetcher = StatsFetcher(sport="nfl", config=config)
         rankings = fetcher.fetch_rankings()
-        profile = fetcher.fetch_team_profile("dal")
     """
 
     def __init__(
         self,
         sport: str,
-        config: Optional[StatsServiceConfig] = None,
+        config: StatsServiceConfig,
         scraper: Optional[Scraper] = None,
     ):
         """Initialize the stats fetcher.
 
         Args:
-            sport: Sport to fetch (nfl, nba)
-            config: Stats service configuration
+            sport: Sport identifier (for logging/paths, e.g., 'nfl', 'bundesliga')
+            config: Stats service configuration with URLs and table mappings
             scraper: Scraper instance (optional, created if not provided)
+
+        Raises:
+            ValueError: If config is missing required URLs
         """
         self.sport = sport.lower()
-        self.config = config or get_default_config(self.sport)
-        self.scraper = scraper or Scraper(self.config.scraper_config)
+        self.config = config
+
+        # Validate config
+        if not config.rankings_url:
+            raise ValueError("StatsServiceConfig must provide rankings_url")
+
+        self.scraper = scraper or Scraper(config.scraper_config)
 
     def fetch_rankings(self) -> Dict[str, Any]:
         """Fetch league-wide team rankings.
+
+        Uses rankings_url and rankings_tables from config.
 
         Returns:
             Dictionary with rankings tables:
@@ -88,36 +87,44 @@ class StatsFetcher:
             StatsFetchError: If fetching fails
             StatsParseError: If parsing fails
         """
-        logger.info(f"Fetching {self.sport.upper()} rankings")
+        logger.info(f"Fetching {self.sport.upper()} rankings from {self.config.rankings_url}")
 
-        if self.sport == "nfl":
-            url = NFL_RANKINGS_URL
-        else:
-            raise StatsFetchError(f"Unknown sport: {self.sport}")
-
-        return self._fetch_tables_from_url(url, self.config.rankings_tables, "rankings")
+        return self._fetch_tables_from_url(
+            self.config.rankings_url,
+            self.config.rankings_tables,
+            "rankings"
+        )
 
     def fetch_defensive_stats(self) -> Dict[str, Any]:
         """Fetch defensive statistics.
+
+        Uses defensive_url and defensive_tables from config.
 
         Returns:
             Dictionary with defensive tables
 
         Raises:
-            StatsFetchError: If fetching fails
+            StatsFetchError: If fetching fails or defensive_url not configured
             StatsParseError: If parsing fails
         """
-        logger.info(f"Fetching {self.sport.upper()} defensive stats")
+        if not self.config.defensive_url:
+            raise StatsFetchError(
+                "Defensive stats URL not configured",
+                context={"sport": self.sport}
+            )
 
-        if self.sport == "nfl":
-            url = NFL_DEFENSIVE_URL
-        else:
-            raise StatsFetchError(f"Unknown sport: {self.sport}")
+        logger.info(f"Fetching {self.sport.upper()} defensive stats from {self.config.defensive_url}")
 
-        return self._fetch_tables_from_url(url, self.config.defensive_tables, "defensive")
+        return self._fetch_tables_from_url(
+            self.config.defensive_url,
+            self.config.defensive_tables,
+            "defensive"
+        )
 
     def fetch_team_profile(self, team_abbr: str) -> Dict[str, Any]:
         """Fetch team profile data.
+
+        Uses team_profile_url_template and profile_tables from config.
 
         Args:
             team_abbr: Team abbreviation (e.g., 'dal', 'buf')
@@ -126,18 +133,25 @@ class StatsFetcher:
             Dictionary with team profile tables
 
         Raises:
-            StatsFetchError: If fetching fails
+            StatsFetchError: If fetching fails or URL template not configured
             StatsParseError: If parsing fails
         """
-        logger.info(f"Fetching {self.sport.upper()} profile for {team_abbr.upper()}")
+        if not self.config.team_profile_url_template:
+            raise StatsFetchError(
+                "Team profile URL template not configured",
+                context={"sport": self.sport}
+            )
 
-        url = get_team_profile_url(self.sport, team_abbr)
+        # Build URL from template (don't lowercase - FBRef URLs are case-sensitive)
+        url = self.config.team_profile_url_template.format(team=team_abbr)
+
+        logger.info(f"Fetching {self.sport.upper()} profile for {team_abbr.upper()} from {url}")
 
         # Profile tables may have dynamic IDs based on team abbreviation
         tables_config = {}
         for table_name, table_id in self.config.profile_tables.items():
-            if "{pfr_abbr}" in table_id:
-                tables_config[table_name] = table_id.format(pfr_abbr=team_abbr.lower())
+            if "{team}" in table_id:
+                tables_config[table_name] = table_id.format(team=team_abbr.lower())
             else:
                 tables_config[table_name] = table_id
 
@@ -244,7 +258,12 @@ class StatsFetcher:
         """
         # Handle multi-level columns by flattening
         if isinstance(df.columns, pd.MultiIndex):
-            df.columns = ['_'.join(str(c) for c in col).strip('_') for col in df.columns.values]
+            new_cols = []
+            for col in df.columns.values:
+                # Filter out "Unnamed" levels (FBRef uses these for uncategorized columns)
+                parts = [str(c) for c in col if not str(c).startswith('Unnamed:')]
+                new_cols.append('_'.join(parts) if parts else str(col[-1]))
+            df.columns = new_cols
 
         # Clean column names
         df.columns = [str(c).strip() for c in df.columns]

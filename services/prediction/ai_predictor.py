@@ -3,8 +3,9 @@
 Wraps the base Predictor with constructor injection for the new service architecture.
 """
 
+import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from services.prediction.config import AIConfig
 from shared.logging import get_logger
@@ -67,6 +68,8 @@ class AIPredictor:
         rankings: Optional[Dict[str, Any]] = None,
         away_profile: Optional[Dict[str, Any]] = None,
         home_profile: Optional[Dict[str, Any]] = None,
+        game_date: Optional[str] = None,
+        odds_dir: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Generate AI predictions for a game.
 
@@ -101,6 +104,8 @@ class AIPredictor:
                 profile_a=away_profile,
                 profile_b=home_profile,
                 odds=odds,
+                game_date=game_date,
+                odds_dir=odds_dir,
             )
 
             if not result.get("success"):
@@ -108,7 +113,8 @@ class AIPredictor:
                 return {
                     "success": False,
                     "prediction": "",
-                    "bets": [],
+                    "analysis": "",
+                    "picks": [],
                     "cost": 0.0,
                     "model": self.config.model,
                     "tokens": {"input": 0, "output": 0, "total": 0},
@@ -117,16 +123,17 @@ class AIPredictor:
 
             # Parse prediction text into structured bets
             prediction_text = result.get("prediction", "")
-            bets = self._parse_prediction_text(prediction_text)
+            analysis, bets = self._parse_prediction_text(prediction_text)
 
             logger.info(
-                f"AI prediction complete: {len(bets)} bets, ${result.get('cost', 0):.2f} cost"
+                f"AI prediction complete: {len(bets)} picks, ${result.get('cost', 0):.2f} cost"
             )
 
             return {
                 "success": True,
                 "prediction": prediction_text,
-                "bets": bets,
+                "analysis": analysis,
+                "picks": bets,
                 "cost": result.get("cost", 0.0),
                 "model": result.get("model", self.config.model),
                 "tokens": result.get("tokens", {"input": 0, "output": 0, "total": 0}),
@@ -137,25 +144,40 @@ class AIPredictor:
             return {
                 "success": False,
                 "prediction": "",
-                "bets": [],
+                "analysis": "",
+                "picks": [],
                 "cost": 0.0,
                 "model": self.config.model,
                 "tokens": {"input": 0, "output": 0, "total": 0},
                 "error": str(e),
             }
 
-    def _parse_prediction_text(self, prediction_text: str) -> List[Dict[str, Any]]:
+    def _parse_prediction_text(self, prediction_text: str) -> Tuple[str, List[Dict[str, Any]]]:
         """Parse AI prediction text into structured bet data.
+
+        Handles two formats:
+        1. JSON array (Bundesliga): Returns picks directly from JSON
+        2. Markdown format (NFL/NBA): Parses using regex
 
         Args:
             prediction_text: Raw prediction text from Claude
 
         Returns:
-            List of bet dictionaries
+            Tuple of (analysis_text, list of bet dictionaries)
         """
-        bets = []
+        # Try JSON format first (Bundesliga prompt)
+        json_match = re.search(r'\[[\s\S]*?\]', prediction_text)
+        if json_match:
+            try:
+                picks = json.loads(json_match.group())
+                # Analysis is everything before the JSON array
+                analysis = prediction_text[:json_match.start()].strip()
+                return analysis, picks
+            except json.JSONDecodeError:
+                pass  # Fall through to regex parser
 
-        # Pattern to match EV singles format
+        # Fallback: Pattern to match old EV singles markdown format
+        bets = []
         bet_pattern = (
             r'## Bet (\d+):.+?\n'
             r'\*\*Bet\*\*: (.+?)\n'
@@ -175,7 +197,7 @@ class AIPredictor:
                 "expected_value": float(match.group(6)),
             })
 
-        return bets
+        return "", bets
 
     def format_results(
         self,
@@ -197,31 +219,14 @@ class AIPredictor:
         """
         from shared.utils.timezone_utils import get_eastern_now
 
-        bets = prediction.get("bets", [])
-
-        # Calculate summary stats
-        if bets:
-            ev_values = [bet.get("expected_value", 0) for bet in bets]
-            summary = {
-                "total_bets": len(bets),
-                "avg_ev": round(sum(ev_values) / len(ev_values), 2),
-                "ev_range": [round(min(ev_values), 2), round(max(ev_values), 2)],
-            }
-        else:
-            summary = {"total_bets": 0, "avg_ev": 0, "ev_range": [0, 0]}
-
         return {
-            "sport": self.sport,
-            "prediction_type": "ai_predictor",
-            "teams": teams,
-            "home_team": home_team,
+            "matchup": f"{teams[0]} @ {teams[1]}",
             "date": game_date,
             "generated_at": get_eastern_now().strftime("%Y-%m-%d %H:%M:%S"),
             "model": prediction.get("model", self.config.model),
-            "api_cost": prediction.get("cost", 0.0),
+            "cost": prediction.get("cost", 0.0),
             "tokens": prediction.get("tokens", {}),
-            "bets": bets,
-            "summary": summary,
+            "picks": prediction.get("picks", []),
         }
 
     def calculate_cost(self, input_tokens: int, output_tokens: int) -> float:

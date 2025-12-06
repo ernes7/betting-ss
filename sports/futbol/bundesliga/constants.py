@@ -14,16 +14,23 @@ FBREF_RATE_LIMIT_PERIOD = settings['scraping']['sports_reference']['rate_limit_p
 
 # URLs
 BUNDESLIGA_STATS_URL = "https://fbref.com/en/comps/20/Bundesliga-Stats"
-TEAM_URL_PATTERN = "https://fbref.com/en/squads/{fbref_id}/{slug}"
+# URL pattern - pass "fbref_id/slug" as {team} e.g. "a224b06a/Mainz-05-Stats"
+TEAM_URL_PATTERN = "https://fbref.com/en/squads/{team}"
 
 # Ranking tables to extract (output_name: html_table_id)
+# Includes offensive and defensive stats for predictions
 RANKING_TABLES = {
+    # League standings
     "standings": "results2025-2026201_overall",
     "standings_home_away": "results2025-2026201_home_away",
+    # Offensive stats (for predicting goals scored)
     "squad_standard": "stats_squads_standard_for",
     "squad_shooting": "stats_squads_shooting_for",
-    "squad_pass_types": "stats_squads_passing_types_for",
     "squad_gca": "stats_squads_gca_for",
+    # Defensive stats (for predicting goals conceded)
+    "squad_standard_against": "stats_squads_standard_against",
+    "squad_shooting_against": "stats_squads_shooting_against",
+    "squad_gca_against": "stats_squads_gca_against",
 }
 
 # Team profile tables to extract (output_name: html_table_id)

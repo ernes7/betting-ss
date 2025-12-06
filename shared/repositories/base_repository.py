@@ -71,24 +71,6 @@ class BaseRepository(ABC):
         """
         return os.path.exists(filepath)
 
-    def delete(self, filepath: str) -> bool:
-        """Delete a file.
-
-        Args:
-            filepath: Full path to delete
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            if os.path.exists(filepath):
-                os.remove(filepath)
-                return True
-            return False
-        except Exception as e:
-            print(f"Error deleting file {filepath}: {str(e)}")
-            return False
-
     def list_all_files(self, directory: str, extension: str = ".json") -> List[str]:
         """List all files in a directory with a specific extension.
 

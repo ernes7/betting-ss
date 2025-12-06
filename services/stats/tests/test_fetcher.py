@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 import pandas as pd
 
-from services.stats import StatsFetcher, StatsServiceConfig, get_default_config
+from services.stats import StatsFetcher, StatsServiceConfig
 from shared.errors import StatsFetchError
 
 
@@ -24,12 +24,15 @@ class TestStatsFetcherInit:
         fetcher = StatsFetcher(config=test_stats_config, sport="NFL")
         assert fetcher.sport == "nfl"
 
-    def test_init_with_default_config(self):
-        """Test initialization with default config."""
-        fetcher = StatsFetcher(sport="nfl")
-
-        assert fetcher.sport == "nfl"
-        assert fetcher.config is not None
+    def test_init_requires_rankings_url(self, test_scraper_config):
+        """Test that initialization fails without rankings_url."""
+        config = StatsServiceConfig(
+            scraper_config=test_scraper_config,
+            rankings_tables={"team_offense": "team_stats"},
+        )
+        with pytest.raises(ValueError) as exc_info:
+            StatsFetcher(sport="nfl", config=config)
+        assert "rankings_url" in str(exc_info.value)
 
 
 class TestStatsFetcherDataframeConversion:
@@ -95,30 +98,12 @@ class TestStatsFetcherFetchMethods:
         assert result["team"] == "DAL"
         assert result["data_type"] == "profile"
 
-    def test_fetch_rankings_unknown_sport(self, test_stats_config):
-        """Test fetch_rankings with unknown sport raises error."""
-        fetcher = StatsFetcher(config=test_stats_config, sport="unknown")
+    def test_fetch_uses_config_urls(self, test_stats_config, mock_scraper):
+        """Test that fetch methods use URLs from config."""
+        fetcher = StatsFetcher(config=test_stats_config, sport="test")
+        fetcher.scraper = mock_scraper
 
-        with pytest.raises(StatsFetchError):
-            fetcher.fetch_rankings()
+        fetcher.fetch_rankings()
 
-
-class TestStatsFetcherURLGeneration:
-    """Tests for URL generation."""
-
-    def test_team_profile_url_nfl(self):
-        """Test NFL team profile URL generation."""
-        from services.stats.fetcher import get_team_profile_url
-
-        url = get_team_profile_url("nfl", "dal")
-
-        assert "pro-football-reference.com" in url
-        assert "dal" in url
-        assert "2025" in url
-
-    def test_team_profile_url_unknown_sport(self):
-        """Test unknown sport raises error."""
-        from services.stats.fetcher import get_team_profile_url
-
-        with pytest.raises(ValueError):
-            get_team_profile_url("unknown", "dal")
+        # Should use the rankings_url from config
+        mock_scraper.fetch_html.assert_called_with(test_stats_config.rankings_url)

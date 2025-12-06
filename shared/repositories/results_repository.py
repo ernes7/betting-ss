@@ -19,34 +19,6 @@ class ResultsRepository(BaseRepository):
         base_path = get_data_path(sport_code, "results")
         super().__init__(base_path)
 
-    def save_result(
-        self,
-        game_date: str,
-        away_abbr: str,
-        home_abbr: str,
-        result_data: dict
-    ) -> bool:
-        """Save game result data.
-
-        Args:
-            game_date: Game date in YYYY-MM-DD format
-            away_abbr: Away team abbreviation (lowercase)
-            home_abbr: Home team abbreviation (lowercase)
-            result_data: Result data dictionary
-
-        Returns:
-            True if successful, False otherwise
-        """
-        filepath = get_file_path(
-            self.sport_code,
-            "results",
-            "result",
-            game_date=game_date,
-            away_abbr=away_abbr,
-            home_abbr=home_abbr
-        )
-        return self.save(filepath, result_data)
-
     def load_result(
         self,
         game_date: str,
@@ -109,29 +81,3 @@ class ResultsRepository(BaseRepository):
             self.list_subdirectories(self.base_path),
             reverse=True
         )
-
-    def result_exists(
-        self,
-        game_date: str,
-        away_abbr: str,
-        home_abbr: str
-    ) -> bool:
-        """Check if result exists for a game.
-
-        Args:
-            game_date: Game date in YYYY-MM-DD format
-            away_abbr: Away team abbreviation (lowercase)
-            home_abbr: Home team abbreviation (lowercase)
-
-        Returns:
-            True if result exists, False otherwise
-        """
-        filepath = get_file_path(
-            self.sport_code,
-            "results",
-            "result",
-            game_date=game_date,
-            away_abbr=away_abbr,
-            home_abbr=home_abbr
-        )
-        return self.exists(filepath)

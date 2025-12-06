@@ -2,52 +2,16 @@
 
 from shared.base.sport_config import SportConfig
 from config import settings
-from sports.nfl.teams import TEAMS
 from sports.nfl.tables import (
-    RANKINGS_TABLES,
-    DEFENSE_TABLES,
     PROFILE_TABLES,
     RESULT_TABLES,
+    BASE_URL,
     RANKINGS_URL,
     DEFENSE_URL,
 )
 from sports.nfl.prompt_components import NFLPromptComponents
-
-
-# NFL Season Year (loaded from config/settings.yaml via CURRENT_YEAR property)
-NFL_SEASON_YEAR = 2025
-
-# Odds market types for DraftKings scraping
-NFL_ODDS_MARKET_TYPES = {
-    # Game lines
-    "game_lines": ["Moneyline", "Spread", "Total"],
-    # Player props - Passing
-    "passing_props": [
-        "Passing Yards Milestones",
-        "Passing Touchdowns Milestones",
-        "Pass Completions Milestones",
-        "Pass Attempts Milestones",
-    ],
-    # Player props - Rushing
-    "rushing_props": [
-        "Rushing Yards Milestones",
-        "Rushing Attempts Milestones",
-        "Rushing + Receiving Yards Milestones",
-    ],
-    # Player props - Receiving
-    "receiving_props": [
-        "Receiving Yards Milestones",
-        "Receptions Milestones",
-    ],
-    # Touchdown scorers
-    "touchdown_props": ["Anytime Touchdown Scorer"],
-    # Defensive props
-    "defensive_props": [
-        "Sacks Milestones",
-        "Tackles + Assists Milestones",
-        "Interceptions Milestones",
-    ],
-}
+from services.stats.config import StatsServiceConfig
+from services.odds.config import OddsServiceConfig
 
 
 class NFLConfig(SportConfig):
@@ -58,18 +22,6 @@ class NFLConfig(SportConfig):
         return "nfl"
 
     @property
-    def season_year(self) -> int:
-        return NFL_SEASON_YEAR
-
-    @property
-    def teams(self) -> list[dict]:
-        return TEAMS
-
-    @property
-    def ranking_tables(self) -> dict:
-        return RANKINGS_TABLES
-
-    @property
     def profile_tables(self) -> dict:
         return PROFILE_TABLES
 
@@ -78,28 +30,12 @@ class NFLConfig(SportConfig):
         return RESULT_TABLES
 
     @property
-    def stats_url(self) -> str:
-        return RANKINGS_URL
-
-    @property
-    def defensive_stats_url(self) -> str:
-        return DEFENSE_URL
-
-    @property
-    def defensive_ranking_tables(self) -> dict:
-        return DEFENSE_TABLES
-
-    @property
     def rate_limit_calls(self) -> int:
         return settings['scraping']['sports_reference']['rate_limit_calls']
 
     @property
     def rate_limit_period(self) -> int:
         return settings['scraping']['sports_reference']['rate_limit_period']
-
-    @property
-    def odds_market_types(self) -> dict:
-        return NFL_ODDS_MARKET_TYPES
 
     @property
     def data_rankings_dir(self) -> str:
@@ -114,10 +50,6 @@ class NFLConfig(SportConfig):
         return "sports/nfl/data/predictions"
 
     @property
-    def predictions_ev_dir(self) -> str:
-        return "sports/nfl/data/predictions_ev"
-
-    @property
     def results_dir(self) -> str:
         return "sports/nfl/data/results"
 
@@ -126,23 +58,8 @@ class NFLConfig(SportConfig):
         return "sports/nfl/data/analysis"
 
     @property
-    def analysis_ev_dir(self) -> str:
-        return "sports/nfl/data/analysis_ev"
-
-    @property
     def prompt_components(self) -> NFLPromptComponents:
         return NFLPromptComponents()
-
-    def build_team_url(self, team_abbr: str) -> str:
-        """Build NFL team URL using Pro-Football-Reference pattern.
-
-        Args:
-            team_abbr: PFR team abbreviation (e.g., "mia" for Miami Dolphins)
-
-        Returns:
-            Complete URL for the team's page
-        """
-        return f"https://www.pro-football-reference.com/teams/{team_abbr}/{NFL_SEASON_YEAR}.htm"
 
     def build_boxscore_url(self, game_date: str, home_team_abbr: str) -> str:
         """Build NFL boxscore URL using Pro-Football-Reference pattern.
@@ -163,3 +80,141 @@ class NFLConfig(SportConfig):
         """
         date_str = game_date.replace("-", "")  # "2025-10-23" -> "20251023"
         return f"https://www.pro-football-reference.com/boxscores/{date_str}0{home_team_abbr}.htm"
+
+
+def get_nfl_stats_config() -> StatsServiceConfig:
+    """Get NFL-specific stats service configuration.
+
+    Returns:
+        StatsServiceConfig with NFL URLs and table mappings for PFR scraping.
+
+    Example:
+        from sports.nfl.nfl_config import get_nfl_stats_config
+        from services.stats import StatsService
+
+        config = get_nfl_stats_config()
+        service = StatsService(sport="nfl", config=config)
+        rankings = service.fetch_rankings()
+    """
+    return StatsServiceConfig(
+        base_url=BASE_URL,
+        rankings_url=RANKINGS_URL,
+        defensive_url=DEFENSE_URL,
+        team_profile_url_template=f"{BASE_URL}/teams/{{team}}/2025.htm",
+        rankings_tables={
+            "team_offense": "team_stats",
+            "passing_offense": "passing",
+            "rushing_offense": "rushing",
+            "scoring_offense": "team_scoring",
+            "afc_standings": "AFC",
+            "nfc_standings": "NFC",
+        },
+        defensive_tables={
+            "team_defense": "team_stats",
+            "advanced_defense": "advanced_defense",
+            "passing_defense": "passing",
+            "rushing_defense": "rushing",
+        },
+        profile_tables={
+            "injury_report": "{team}_injury_report",
+            "team_stats": "team_stats",
+            "schedule_results": "games",
+            "passing": "passing",
+            "rushing_receiving": "rushing_and_receiving",
+            "defense_fumbles": "defense",
+            "scoring_summary": "scoring",
+            "touchdown_log": "team_td_log",
+        },
+    )
+
+
+def get_nfl_odds_config() -> OddsServiceConfig:
+    """Get NFL-specific odds service configuration.
+
+    Returns:
+        OddsServiceConfig with NFL market mappings for DraftKings scraping.
+
+    Example:
+        from sports.nfl.nfl_config import get_nfl_odds_config
+        from services.odds import OddsService
+
+        config = get_nfl_odds_config()
+        service = OddsService(sport="nfl", config=config)
+        odds = service.fetch_from_url(draftkings_url)
+    """
+    return OddsServiceConfig(
+        api_url_template="https://sportsbook-nash.draftkings.com/api/sportscontent/dkusnj/v1/events/{event_id}/categories",
+        league_url="https://sportsbook-nash.draftkings.com/api/sportscontent/dkusnj/v1/leagues/88808",
+        market_name_map={
+            # Passing
+            "Passing Yards Milestones": "passing_yards",
+            "Passing Touchdowns Milestones": "passing_tds",
+            "Pass Completions Milestones": "pass_completions",
+            "Pass Attempts Milestones": "pass_attempts",
+            # Rushing
+            "Rushing Yards Milestones": "rushing_yards",
+            "Rushing Attempts Milestones": "rush_attempts",
+            # Receiving
+            "Receiving Yards Milestones": "receiving_yards",
+            "Receptions Milestones": "receptions",
+            "Rushing + Receiving Yards Milestones": "rush_rec_yards",
+            "Rushing and Receiving Yards Milestones": "rush_rec_yards",
+            # Defense
+            "Sacks Milestones": "sacks",
+            "Tackles + Assists Milestones": "tackles_assists",
+            "Interceptions Milestones": "interceptions",
+        },
+        included_markets={
+            # Game lines
+            "Moneyline",
+            "Spread",
+            "Total",
+            # Player props - Passing
+            "Passing Yards Milestones",
+            "Passing Touchdowns Milestones",
+            "Pass Completions Milestones",
+            "Pass Attempts Milestones",
+            # Player props - Rushing
+            "Rushing Yards Milestones",
+            "Rushing Attempts Milestones",
+            # Player props - Receiving
+            "Receiving Yards Milestones",
+            "Receptions Milestones",
+            "Rushing + Receiving Yards Milestones",
+            # TD scorers
+            "Anytime Touchdown Scorer",
+            # Defensive props
+            "Sacks Milestones",
+            "Tackles + Assists Milestones",
+            "Interceptions Milestones",
+        },
+        excluded_markets={
+            "1st Quarter Moneyline",
+            "1st Quarter Spread",
+            "1st Quarter Total",
+            "1st Half Moneyline",
+            "1st Half Spread",
+            "1st Half Total",
+            "1st Drive Result",
+            "DK Squares",
+        },
+        # Market categories for parsing strategy
+        player_prop_markets={
+            "Anytime Touchdown Scorer",
+        },
+        milestone_markets={
+            "Passing Yards Milestones",
+            "Passing Touchdowns Milestones",
+            "Pass Completions Milestones",
+            "Pass Attempts Milestones",
+            "Rushing Yards Milestones",
+            "Rushing Attempts Milestones",
+            "Receiving Yards Milestones",
+            "Receptions Milestones",
+            "Rushing + Receiving Yards Milestones",
+            "Rushing and Receiving Yards Milestones",
+            "Sacks Milestones",
+            "Tackles + Assists Milestones",
+            "Interceptions Milestones",
+        },
+    )

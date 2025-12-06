@@ -37,4 +37,7 @@ screenshots/
 *.html
 
 # Data directories (all generated/scraped data)
-sports/*/data/
+sports/**/data/
+
+# Runtime files
+errors.json

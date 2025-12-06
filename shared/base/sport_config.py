@@ -1,16 +1,15 @@
 """Abstract base class for sport-specific configuration."""
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Callable
 
 
 class SportConfig(ABC):
     """Abstract base class defining the interface for sport configurations.
 
     Each sport must implement this interface to provide sport-specific:
-    - Team metadata
     - Table mappings for scraping
-    - URLs and rate limits
+    - Rate limits
     - Data storage paths
     - Prompt components
     """
@@ -19,18 +18,6 @@ class SportConfig(ABC):
     @abstractmethod
     def sport_name(self) -> str:
         """Return the sport name (e.g., 'nfl', 'nba', 'nhl')."""
-        pass
-
-    @property
-    @abstractmethod
-    def teams(self) -> list[dict[str, Any]]:
-        """Return list of team dictionaries with metadata."""
-        pass
-
-    @property
-    @abstractmethod
-    def ranking_tables(self) -> dict[str, str]:
-        """Return mapping of table names to HTML table IDs for rankings."""
         pass
 
     @property
@@ -44,30 +31,6 @@ class SportConfig(ABC):
     def result_tables(self) -> dict[str, str]:
         """Return mapping of table names to HTML table IDs for game results/boxscores."""
         pass
-
-    @property
-    @abstractmethod
-    def stats_url(self) -> str:
-        """Return the main stats/rankings URL for the sport."""
-        pass
-
-    @property
-    def defensive_stats_url(self) -> str | None:
-        """Return the defensive stats URL if sport has separate defensive page.
-
-        Optional property - sports can override to provide defensive stats URL.
-        Default: None (no separate defensive stats page)
-        """
-        return None
-
-    @property
-    def defensive_ranking_tables(self) -> dict[str, str] | None:
-        """Return mapping of defensive table names to HTML table IDs.
-
-        Optional property - sports can override to scrape defensive stats.
-        Default: None (no defensive tables to scrape)
-        """
-        return None
 
     @property
     @abstractmethod
@@ -118,18 +81,6 @@ class SportConfig(ABC):
         pass
 
     @abstractmethod
-    def build_team_url(self, team_abbr: str) -> str:
-        """Build team-specific URL using sport's URL pattern.
-
-        Args:
-            team_abbr: Team abbreviation specific to the sport's reference site
-
-        Returns:
-            Complete URL for the team's page
-        """
-        pass
-
-    @abstractmethod
     def build_boxscore_url(self, game_date: str, home_team_abbr: str) -> str:
         """Build URL for game boxscore/results page.
 
@@ -142,16 +93,14 @@ class SportConfig(ABC):
         """
         pass
 
-    def get_team_by_name(self, team_name: str) -> dict[str, Any] | None:
-        """Get team metadata by full team name.
+    @property
+    def prompt_builder(self) -> Callable | None:
+        """Optional sport-specific prompt builder function.
 
-        Args:
-            team_name: Full team name (e.g., "Miami Dolphins")
+        Override this to provide a custom prompt builder for the sport.
+        If None, the default shared PromptBuilder will be used.
 
         Returns:
-            Team dictionary or None if not found
+            Callable that builds a prompt string, or None for default behavior.
         """
-        for team in self.teams:
-            if team["name"].lower() == team_name.lower():
-                return team
         return None

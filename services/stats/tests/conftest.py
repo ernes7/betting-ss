@@ -25,8 +25,12 @@ def test_scraper_config() -> ScraperConfig:
 
 @pytest.fixture
 def test_stats_config(test_scraper_config) -> StatsServiceConfig:
-    """Test stats service configuration."""
+    """Test stats service configuration with all required URLs."""
     return StatsServiceConfig(
+        base_url="https://www.example.com",
+        rankings_url="https://www.example.com/rankings/",
+        defensive_url="https://www.example.com/defense/",
+        team_profile_url_template="https://www.example.com/teams/{team}/2025.htm",
         scraper_config=test_scraper_config,
         rankings_tables={"team_offense": "team_stats"},
         defensive_tables={"team_defense": "team_stats"},
@@ -87,6 +91,10 @@ def stats_fetcher(test_stats_config, mock_scraper) -> StatsFetcher:
 def stats_service(test_stats_config, tmp_path) -> StatsService:
     """StatsService with temp directory."""
     config = StatsServiceConfig(
+        base_url=test_stats_config.base_url,
+        rankings_url=test_stats_config.rankings_url,
+        defensive_url=test_stats_config.defensive_url,
+        team_profile_url_template=test_stats_config.team_profile_url_template,
         scraper_config=test_stats_config.scraper_config,
         data_root=str(tmp_path / "{sport}" / "data"),
         rankings_tables=test_stats_config.rankings_tables,

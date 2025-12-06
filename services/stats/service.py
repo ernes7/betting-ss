@@ -1,12 +1,11 @@
-"""STATS Service - Fetches and manages team rankings and profiles.
+"""STATS Service - Sport-agnostic stats fetching and storage.
 
-This service is responsible for:
-- Fetching league-wide rankings from PFR
-- Fetching team-specific profiles from PFR
-- Saving stats to the data directory as CSV
-- Loading and querying existing stats
+This service is a black box that:
+- Takes sport configuration as input (URLs, table mappings)
+- Fetches HTML tables from sports reference sites
+- Outputs CSV files
 
-All dependencies are injected via constructor.
+All sport-specific details come from the config parameter.
 """
 
 from datetime import datetime
@@ -24,21 +23,23 @@ from shared.errors import (
     DataIOError,
 )
 
-from services.stats.config import StatsServiceConfig, get_default_config
+from services.stats.config import StatsServiceConfig
 from services.stats.fetcher import StatsFetcher
 
 logger = get_logger("stats")
 
 
 class StatsService:
-    """Service for fetching and managing team statistics.
+    """Sport-agnostic service for fetching and managing team statistics.
 
+    This is a black box - all sport-specific details come from the config.
     Uses constructor injection for all dependencies.
-    Fail-fast error handling with errors.json output.
 
     Example:
-        # Create service with default config
-        service = StatsService(sport="nfl")
+        from sports.nfl.nfl_config import get_nfl_stats_config
+
+        config = get_nfl_stats_config()
+        service = StatsService(sport="nfl", config=config)
 
         # Fetch rankings
         rankings = service.fetch_rankings()
@@ -53,20 +54,20 @@ class StatsService:
     def __init__(
         self,
         sport: str,
-        config: StatsServiceConfig | None = None,
+        config: StatsServiceConfig,
         fetcher: StatsFetcher | None = None,
         error_handler: ErrorHandler | None = None,
     ):
         """Initialize the STATS service.
 
         Args:
-            sport: Sport name (nfl, nba)
-            config: Service configuration (uses defaults if not provided)
+            sport: Sport identifier (e.g., 'nfl', 'bundesliga')
+            config: Service configuration with URLs and table mappings (required)
             fetcher: StatsFetcher instance (created if not provided)
             error_handler: ErrorHandler instance (created if not provided)
         """
         self.sport = sport.lower()
-        self.config = config or get_default_config(self.sport)
+        self.config = config
         self.fetcher = fetcher or StatsFetcher(self.sport, self.config)
         self.error_handler = error_handler or ErrorHandler("stats")
 
@@ -77,8 +78,14 @@ class StatsService:
 
         logger.info(f"StatsService initialized for {self.sport}")
 
-    def fetch_rankings(self) -> dict[str, Any]:
+    def fetch_rankings(
+        self, skip_if_exists: bool = True, date: str | None = None
+    ) -> dict[str, Any]:
         """Fetch league-wide team rankings.
+
+        Args:
+            skip_if_exists: If True, load from cache if rankings exist for date
+            date: Date to check (defaults to today)
 
         Returns:
             Dictionary with rankings tables
@@ -87,13 +94,26 @@ class StatsService:
             StatsFetchError: If fetching fails
             StatsParseError: If parsing fails
         """
+        if date is None:
+            date = datetime.now().strftime("%Y-%m-%d")
+
+        if skip_if_exists and self.rankings_exist(date):
+            logger.info(f"Rankings already exist for {date}, loading from cache")
+            return self.load_rankings(date)
+
         try:
             return self.fetcher.fetch_rankings()
         except (StatsFetchError, StatsParseError) as e:
             self.error_handler.handle(e)
 
-    def fetch_defensive_stats(self) -> dict[str, Any]:
+    def fetch_defensive_stats(
+        self, skip_if_exists: bool = True, date: str | None = None
+    ) -> dict[str, Any]:
         """Fetch defensive statistics.
+
+        Args:
+            skip_if_exists: If True, load from cache if defensive stats exist for date
+            date: Date to check (defaults to today)
 
         Returns:
             Dictionary with defensive tables
@@ -102,16 +122,30 @@ class StatsService:
             StatsFetchError: If fetching fails
             StatsParseError: If parsing fails
         """
+        if date is None:
+            date = datetime.now().strftime("%Y-%m-%d")
+
+        # Check if defensive stats exist (they're saved with defense_ prefix)
+        if skip_if_exists:
+            date_dir = self.rankings_dir / date
+            if date_dir.exists() and any(f.name.startswith("defense_") for f in date_dir.glob("*.csv")):
+                logger.info(f"Defensive stats already exist for {date}, loading from cache")
+                return self.load_defensive_stats(date)
+
         try:
             return self.fetcher.fetch_defensive_stats()
         except (StatsFetchError, StatsParseError) as e:
             self.error_handler.handle(e)
 
-    def fetch_team_profile(self, team_abbr: str) -> dict[str, Any]:
+    def fetch_team_profile(
+        self, team_abbr: str, skip_if_exists: bool = True, date: str | None = None
+    ) -> dict[str, Any]:
         """Fetch team profile data.
 
         Args:
             team_abbr: Team abbreviation (e.g., 'dal', 'buf')
+            skip_if_exists: If True, load from cache if profile exists for date
+            date: Date to check (defaults to today)
 
         Returns:
             Dictionary with team profile tables
@@ -120,6 +154,13 @@ class StatsService:
             StatsFetchError: If fetching fails
             StatsParseError: If parsing fails
         """
+        if date is None:
+            date = datetime.now().strftime("%Y-%m-%d")
+
+        if skip_if_exists and self.profile_exists(team_abbr, date):
+            logger.info(f"Profile for {team_abbr.upper()} already exists for {date}, loading from cache")
+            return self.load_team_profile(team_abbr, date)
+
         try:
             return self.fetcher.fetch_team_profile(team_abbr)
         except (StatsFetchError, StatsParseError) as e:
@@ -159,6 +200,9 @@ class StatsService:
                     df = table_data
                 elif isinstance(table_data, list):
                     df = pd.DataFrame(table_data)
+                elif isinstance(table_data, dict) and "data" in table_data:
+                    # Handle fetcher format: {"table_name": ..., "columns": ..., "data": [...]}
+                    df = pd.DataFrame(table_data["data"])
                 else:
                     continue
 
@@ -261,6 +305,9 @@ class StatsService:
                     df = table_data
                 elif isinstance(table_data, list):
                     df = pd.DataFrame(table_data)
+                elif isinstance(table_data, dict) and "data" in table_data:
+                    # Handle fetcher format: {"table_name": ..., "columns": ..., "data": [...]}
+                    df = pd.DataFrame(table_data["data"])
                 else:
                     continue
 

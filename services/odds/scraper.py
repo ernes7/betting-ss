@@ -1,10 +1,9 @@
 """Odds scraper for DraftKings.
 
 Sport-agnostic scraper that extracts betting odds from DraftKings JSON API.
-Uses the new pandas-based Scraper class.
+All sport-specific details (API URLs, market mappings) come from the config.
 """
 
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,45 +19,16 @@ from services.odds.config import OddsServiceConfig
 logger = get_logger("odds")
 
 
-# Market type to prop name mapping
-MARKET_NAME_MAP = {
-    # NFL
-    "Passing Yards Milestones": "passing_yards",
-    "Passing Touchdowns Milestones": "passing_tds",
-    "Pass Completions Milestones": "pass_completions",
-    "Pass Attempts Milestones": "pass_attempts",
-    "Rushing Yards Milestones": "rushing_yards",
-    "Rushing Attempts Milestones": "rush_attempts",
-    "Receiving Yards Milestones": "receiving_yards",
-    "Receptions Milestones": "receptions",
-    "Rushing + Receiving Yards Milestones": "rush_rec_yards",
-    "Rushing and Receiving Yards Milestones": "rush_rec_yards",
-    "Sacks Milestones": "sacks",
-    "Tackles + Assists Milestones": "tackles_assists",
-    "Interceptions Milestones": "interceptions",
-    # NBA
-    "Points Milestones": "points",
-    "Rebounds Milestones": "rebounds",
-    "Assists Milestones": "assists",
-    "3-Pointers Made Milestones": "threes_made",
-    "Pts + Reb Milestones": "pts_reb",
-    "Pts + Ast Milestones": "pts_ast",
-    "Reb + Ast Milestones": "reb_ast",
-    "Pts + Reb + Ast Milestones": "pts_reb_ast",
-}
-
-
 class OddsScraper:
     """Scrapes betting odds from DraftKings JSON API.
 
-    Uses constructor injection for all configuration.
-    Sport-agnostic - works for NFL, NBA, and other sports.
+    This is a sport-agnostic black box. All sport-specific details
+    (API URLs, market mappings) come from the config parameter.
 
     Example:
-        config = OddsServiceConfig(
-            included_markets=NFL_INCLUDED_MARKETS,
-            excluded_markets=NFL_EXCLUDED_MARKETS,
-        )
+        from sports.nfl.nfl_config import get_nfl_odds_config
+
+        config = get_nfl_odds_config()
         scraper = OddsScraper(config=config, sport="nfl")
 
         # From API
@@ -77,10 +47,16 @@ class OddsScraper:
         """Initialize the odds scraper.
 
         Args:
-            config: Odds service configuration
-            sport: Sport name (nfl, nba)
+            config: Odds service configuration (required)
+            sport: Sport name (e.g., 'nfl', 'bundesliga')
             scraper: Optional Scraper instance (created if not provided)
+
+        Raises:
+            ValueError: If config is missing required fields
         """
+        if not config.api_url_template:
+            raise ValueError("OddsServiceConfig must provide api_url_template")
+
         self.config = config
         self.sport = sport.lower()
         self.parser = DraftKingsParser()
@@ -99,7 +75,7 @@ class OddsScraper:
             OddsFetchError: If fetching fails
             OddsParseError: If parsing fails
         """
-        api_url = f"https://sportsbook-nash.draftkings.com/api/sportscontent/dkusnj/v1/events/{event_id}/categories"
+        api_url = self.config.api_url_template.format(event_id=event_id)
         logger.info(f"Fetching odds from API for event {event_id}")
 
         try:
@@ -150,6 +126,43 @@ class OddsScraper:
 
         event_id = match.group(1)
         return self.fetch_odds_from_api(event_id)
+
+    def fetch_schedule(self) -> list[dict[str, Any]]:
+        """Fetch upcoming games from league API.
+
+        Returns:
+            List of games with event_id, matchup, start_date
+
+        Raises:
+            OddsFetchError: If league_url not configured or fetch fails
+        """
+        if not self.config.league_url:
+            raise OddsFetchError(
+                "league_url not configured",
+                context={"sport": self.sport}
+            )
+
+        logger.info(f"Fetching schedule from {self.config.league_url}")
+
+        try:
+            data = self.scraper.fetch_json(self.config.league_url)
+
+            games = []
+            for event in data.get("events", []):
+                games.append({
+                    "event_id": event.get("id"),
+                    "matchup": event.get("name"),
+                    "start_date": event.get("startEventDate"),
+                })
+
+            logger.info(f"Found {len(games)} upcoming games")
+            return games
+
+        except Exception as e:
+            raise OddsFetchError(
+                f"Failed to fetch schedule: {e}",
+                context={"url": self.config.league_url, "error": str(e)}
+            )
 
     def extract_odds_from_file(self, html_path: str | Path) -> dict[str, Any]:
         """Extract odds from a saved DraftKings HTML file.
@@ -225,10 +238,12 @@ class OddsScraper:
             "fetched_at": get_eastern_now().isoformat(),
             "source": self.config.source,
             "game_lines": self._extract_game_lines(event_id, markets, selections),
+            "game_props": self._extract_game_props(event_id, markets, selections),
             "player_props": self._extract_player_props(event_id, markets, selections),
         }
 
         logger.info(f"Extracted {len(result['game_lines'])} game lines")
+        logger.info(f"Extracted {len(result['game_props'])} game props")
         logger.info(f"Extracted {len(result['player_props'])} player prop markets")
 
         return result
@@ -264,10 +279,12 @@ class OddsScraper:
             "fetched_at": get_eastern_now().isoformat(),
             "source": self.config.source,
             "game_lines": self._extract_game_lines(event_id, markets, selections),
+            "game_props": self._extract_game_props(event_id, markets, selections),
             "player_props": self._extract_player_props(event_id, markets, selections),
         }
 
         logger.info(f"Extracted {len(result['game_lines'])} game lines")
+        logger.info(f"Extracted {len(result['game_props'])} game props")
         logger.info(f"Extracted {len(result['player_props'])} player prop markets")
 
         return result
@@ -296,13 +313,64 @@ class OddsScraper:
 
         return game_lines
 
+    def _extract_game_props(
+        self,
+        event_id: str,
+        markets: list[dict],
+        selections: list[dict]
+    ) -> list[dict]:
+        """Extract game-level prop markets (BTTS, corners, total goals, etc.)."""
+        game_props = []
+
+        for market in markets:
+            if market.get("eventId") != event_id:
+                continue
+
+            market_type = market.get("marketType", {}).get("name")
+
+            # Only process markets in game_prop_markets config
+            if market_type not in self.config.game_prop_markets:
+                continue
+
+            market_id = market.get("id")
+            market_name = market.get("name", market_type)
+            market_selections = [s for s in selections if s.get("marketId") == market_id]
+
+            # Get prop name from config mapping
+            prop_name = self.config.market_name_map.get(
+                market_type,
+                market_type.lower().replace(" ", "_")
+            )
+
+            prop_data = {
+                "market": prop_name,
+                "market_name": market_name,  # Full name (e.g., "Stuttgart: Team Total Goals")
+                "selections": []
+            }
+
+            for sel in market_selections:
+                label = sel.get("label", "")
+                points = sel.get("points")
+                odds = self.parser.clean_odds(sel.get("displayOdds", {}).get("american"))
+
+                prop_data["selections"].append({
+                    "label": label,
+                    "line": points,
+                    "odds": odds
+                })
+
+            if prop_data["selections"]:
+                game_props.append(prop_data)
+
+        return game_props
+
     def _extract_player_props(
         self,
         event_id: str,
         markets: list[dict],
         selections: list[dict]
     ) -> list[dict]:
-        """Extract player prop markets."""
+        """Extract player prop markets using config-driven parsing."""
         player_markets: dict[str, dict] = {}
 
         for market in markets:
@@ -319,25 +387,34 @@ class OddsScraper:
             if self.config.included_markets and market_type not in self.config.included_markets:
                 continue
 
-            # Handle different market types
-            if market_type == "Anytime Touchdown Scorer":
-                self._add_td_scorer_props(market, selections, player_markets)
-            elif "Milestones" in str(market_type):
+            # Config-driven parsing based on market category
+            if market_type in self.config.player_prop_markets:
+                self._add_player_prop(market, market_type, selections, player_markets)
+            elif market_type in self.config.milestone_markets:
                 self._add_milestone_prop(market, market_type, selections, player_markets)
-            elif market_type in ("Double-Double", "Triple-Double"):
-                self._add_special_prop(market, market_type, selections, player_markets)
 
         return list(player_markets.values())
 
-    def _add_td_scorer_props(
+    def _add_player_prop(
         self,
         market: dict,
+        market_type: str,
         all_selections: list[dict],
         player_markets: dict
     ):
-        """Add touchdown scorer props to player_markets."""
+        """Add player prop (one player per selection) to player_markets.
+
+        Used for markets like Anytime Goalscorer, Anytime TD, Double-Double, etc.
+        Each selection represents one player with their odds.
+        """
         market_id = market["id"]
         market_selections = [s for s in all_selections if s.get("marketId") == market_id]
+
+        # Get prop name from config mapping, fallback to slugified market type
+        prop_name = self.config.market_name_map.get(
+            market_type,
+            market_type.lower().replace(" ", "_").replace("-", "_")
+        )
 
         for selection in market_selections:
             participants = selection.get("participants", [])
@@ -359,7 +436,7 @@ class OddsScraper:
 
             odds = self.parser.clean_odds(selection.get("displayOdds", {}).get("american"))
             player_markets[key]["props"].append({
-                "market": "anytime_td",
+                "market": prop_name,
                 "odds": odds
             })
 
@@ -393,7 +470,7 @@ class OddsScraper:
                 "props": []
             }
 
-        prop_name = MARKET_NAME_MAP.get(market_type)
+        prop_name = self.config.market_name_map.get(market_type)
         if not prop_name:
             return
 
@@ -404,39 +481,3 @@ class OddsScraper:
                 "milestones": milestones
             })
 
-    def _add_special_prop(
-        self,
-        market: dict,
-        market_type: str,
-        all_selections: list[dict],
-        player_markets: dict
-    ):
-        """Add special props (double-double, triple-double) to player_markets."""
-        market_id = market["id"]
-        market_selections = [s for s in all_selections if s.get("marketId") == market_id]
-
-        prop_name = market_type.lower().replace("-", "_")
-
-        for selection in market_selections:
-            participants = selection.get("participants", [])
-            if not participants or participants[0].get("type") != "Player":
-                continue
-
-            player_name = participants[0].get("name")
-            venue_role = participants[0].get("venueRole", "")
-            team = self.parser.parse_team_from_venue_role(venue_role)
-
-            key = f"{player_name}_{team}"
-            if key not in player_markets:
-                player_markets[key] = {
-                    "player": player_name,
-                    "team": team,
-                    "position": None,
-                    "props": []
-                }
-
-            odds = self.parser.clean_odds(selection.get("displayOdds", {}).get("american"))
-            player_markets[key]["props"].append({
-                "market": prop_name,
-                "odds": odds
-            })

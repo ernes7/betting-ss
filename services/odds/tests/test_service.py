@@ -11,26 +11,26 @@ from shared.errors import DataNotFoundError
 class TestOddsServiceInit:
     """Tests for OddsService initialization."""
 
-    def test_init_with_defaults(self):
-        """Test initialization with default config."""
-        service = OddsService(sport="nfl")
-
-        assert service.sport == "nfl"
-        assert service.config is not None
-        assert service.scraper is not None
-
-    def test_init_with_custom_config(self, test_odds_config):
-        """Test initialization with custom config."""
+    def test_init_with_config(self, test_odds_config):
+        """Test initialization with config."""
         service = OddsService(sport="nfl", config=test_odds_config)
 
+        assert service.sport == "nfl"
         assert service.config == test_odds_config
+        assert service.scraper is not None
 
-    def test_init_normalizes_sport(self):
+    def test_init_requires_config(self):
+        """Test that initialization requires config parameter."""
+        # OddsService now requires config - it's a sport-agnostic black box
+        with pytest.raises(TypeError):
+            OddsService(sport="nfl")  # Missing config
+
+    def test_init_normalizes_sport(self, test_odds_config):
         """Test that sport name is normalized to lowercase."""
-        service = OddsService(sport="NFL")
+        service = OddsService(sport="NFL", config=test_odds_config)
         assert service.sport == "nfl"
 
-        service = OddsService(sport="Nfl")
+        service = OddsService(sport="Nfl", config=test_odds_config)
         assert service.sport == "nfl"
 
 
@@ -259,3 +259,55 @@ class TestOddsServiceFromData:
         dak_props = next((p for p in player_props if p["player"] == "Dak Prescott"), None)
         assert dak_props is not None
         assert len(dak_props["props"]) > 0
+
+
+class TestOddsServiceSchedule:
+    """Tests for OddsService schedule methods."""
+
+    def test_save_schedule(self, odds_service, sample_schedule_data):
+        """Test saving schedule to CSV."""
+        schedule_path = odds_service.save_schedule(sample_schedule_data)
+
+        assert schedule_path.exists()
+        assert schedule_path.name == "schedule.csv"
+
+    def test_save_schedule_custom_filename(self, odds_service, sample_schedule_data):
+        """Test saving schedule with custom filename."""
+        schedule_path = odds_service.save_schedule(sample_schedule_data, filename="upcoming.csv")
+
+        assert schedule_path.exists()
+        assert schedule_path.name == "upcoming.csv"
+
+    def test_load_schedule(self, odds_service, sample_schedule_data):
+        """Test loading schedule from CSV."""
+        # First save
+        odds_service.save_schedule(sample_schedule_data)
+
+        # Then load
+        loaded = odds_service.load_schedule()
+
+        assert len(loaded) == 3
+        assert loaded[0]["event_id"] == "28937481"
+        assert loaded[0]["matchup"] == "NYG @ DAL"
+
+    def test_load_schedule_not_found(self, odds_service):
+        """Test loading non-existent schedule raises error."""
+        with pytest.raises(DataNotFoundError) as exc_info:
+            odds_service.load_schedule()
+
+        assert "Schedule not found" in str(exc_info.value)
+
+    def test_save_and_load_schedule_roundtrip(self, odds_service, sample_schedule_data):
+        """Test that save/load preserves data."""
+        # Save
+        odds_service.save_schedule(sample_schedule_data)
+
+        # Load
+        loaded = odds_service.load_schedule()
+
+        # Verify all records
+        assert len(loaded) == len(sample_schedule_data)
+        for original, loaded_item in zip(sample_schedule_data, loaded):
+            assert loaded_item["event_id"] == original["event_id"]
+            assert loaded_item["matchup"] == original["matchup"]
+            assert loaded_item["start_date"] == original["start_date"]

@@ -16,8 +16,23 @@ class Scraper:
 
     def __init__(self, config: ScraperConfig | None = None):
         self.config = config or ScraperConfig()
-        self.session = requests.Session()
+
+        # Use cloudscraper for Cloudflare bypass (e.g., FBRef)
+        if self.config.use_cloudscraper:
+            import cloudscraper
+            self.session = cloudscraper.create_scraper(
+                browser={
+                    'browser': 'chrome',
+                    'platform': 'darwin',
+                    'desktop': True,
+                },
+            )
+        else:
+            self.session = requests.Session()
+
         self.session.headers.update({"User-Agent": self.config.user_agent})
+        if self.config.headers:
+            self.session.headers.update(self.config.headers)
 
     # === HTML Table Extraction ===
 

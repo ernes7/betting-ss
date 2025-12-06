@@ -15,6 +15,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from services.cli import CLIOrchestrator, get_default_config
 from shared.factory import SportFactory
+import shared.register_sports  # noqa: F401 - triggers sport registration
 
 # Initialize Rich console
 console = Console()
@@ -30,6 +31,11 @@ SPORTS = {
         "name": "NBA",
         "emoji": "🏀",
         "code": "nba",
+    },
+    "3": {
+        "name": "Bundesliga",
+        "emoji": "⚽",
+        "code": "bundesliga",
     },
 }
 
@@ -223,23 +229,31 @@ def display_prediction_results(result: Dict[str, Any], game_info: str):
     # AI Results
     ai_result = result.get("ai_result")
     if ai_result and "error" not in ai_result:
-        bets = ai_result.get("bets", [])
+        picks = ai_result.get("picks", [])
         cost = result.get("total_cost", 0)
-        console.print(f"\n[blue]AI Predictor - {len(bets)} bets (${cost:.2f})[/blue]")
+        console.print(f"\n[blue]AI Predictor - {len(picks)} picks (${cost:.2f})[/blue]")
 
-        if bets:
+        if picks:
             table = Table(show_header=True, header_style="bold blue")
             table.add_column("#", width=3)
-            table.add_column("Bet", min_width=30)
+            table.add_column("Market", min_width=15)
+            table.add_column("Pick", min_width=20)
             table.add_column("Odds", width=8)
-            table.add_column("EV%", width=8)
+            table.add_column("Key Stat", min_width=25)
 
-            for i, bet in enumerate(bets[:5], 1):
+            for i, pick in enumerate(picks[:5], 1):
+                # Handle both old format (bet, expected_value) and new format (market, pick, key_stat)
+                market = pick.get("market", pick.get("bet", "?"))
+                pick_text = pick.get("pick", "")
+                odds = pick.get("odds", "?")
+                key_stat = pick.get("key_stat", f"+{pick.get('expected_value', 0):.1f}% EV" if "expected_value" in pick else "")
+
                 table.add_row(
                     str(i),
-                    bet.get("bet", "?"),
-                    str(bet.get("odds", "?")),
-                    f"+{bet.get('expected_value', 0):.1f}%"
+                    str(market)[:20],
+                    str(pick_text)[:25],
+                    str(odds),
+                    str(key_stat)[:30]
                 )
             console.print(table)
 
@@ -315,18 +329,22 @@ def display_menu(sport_config: dict):
     menu_text.append("5. ", style="bold yellow")
     menu_text.append("Fetch Odds\n", style="white")
     menu_text.append("   ", style="dim")
-    menu_text.append("[Paste DraftKings URL to save odds]\n", style="dim")
+    menu_text.append("[Scrape DraftKings odds for games]\n", style="dim")
     menu_text.append("6. ", style="bold yellow")
+    menu_text.append("Fetch Stats\n", style="white")
+    menu_text.append("   ", style="dim")
+    menu_text.append("[Scrape FBRef rankings & profiles]\n", style="dim")
+    menu_text.append("7. ", style="bold yellow")
     menu_text.append("Fetch Results & Analyze\n", style="white")
     menu_text.append("   ", style="dim")
     menu_text.append("[Get results and calculate P/L]\n", style="dim")
-    menu_text.append("7. ", style="bold yellow")
+    menu_text.append("8. ", style="bold yellow")
     menu_text.append("View Dashboard\n", style="white")
     menu_text.append("   ", style="dim")
     menu_text.append("[Open Streamlit dashboard]\n", style="dim")
-    menu_text.append("8. ", style="bold yellow")
-    menu_text.append("Change Sport\n", style="white")
     menu_text.append("9. ", style="bold yellow")
+    menu_text.append("Change Sport\n", style="white")
+    menu_text.append("0. ", style="bold yellow")
     menu_text.append("Exit\n", style="white")
 
     # Display in panel
@@ -339,46 +357,243 @@ def display_menu(sport_config: dict):
 
 
 def run_fetch_odds(orchestrator: CLIOrchestrator):
-    """Fetch odds from DraftKings URL (Menu Option 5)."""
+    """Fetch odds from DraftKings (Menu Option 5)."""
     console.print("\n[bold cyan]Fetch Odds from DraftKings[/bold cyan]")
-    console.print("[dim]Paste a DraftKings game URL to extract and save odds.[/dim]")
+    console.print("[dim]Fetching upcoming games schedule...[/dim]")
 
-    url = Prompt.ask("\n[cyan]DraftKings URL[/cyan]")
-
-    if not url or "draftkings" not in url.lower():
-        console.print("[yellow]Invalid URL. Must be a DraftKings game page.[/yellow]")
-        return
-
+    # Fetch schedule automatically
     try:
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            progress.add_task("Fetching odds from DraftKings...", total=None)
-            odds_data = orchestrator.odds_service.fetch_from_url(url)
-
-        if odds_data:
-            # Extract team info for display
-            teams = odds_data.get("teams", {})
-            away = teams.get("away", {}).get("name", "?")
-            home = teams.get("home", {}).get("name", "?")
-            game_date = odds_data.get("game_date", "")[:10]
-
-            path = orchestrator.odds_service.save_odds(odds_data)
-            console.print(f"\n[green]Odds saved successfully![/green]")
-            console.print(f"  Game: {away} @ {home}")
-            console.print(f"  Date: {game_date}")
-            console.print(f"  Path: {path}")
-
-            # Show summary
-            props = odds_data.get("player_props", [])
-            console.print(f"\n  [dim]Player props: {len(props)} players[/dim]")
-        else:
-            console.print("[red]Failed to fetch odds - no data returned[/red]")
-
+            progress.add_task("Fetching upcoming games...", total=None)
+            games = orchestrator.odds_service.fetch_schedule()
     except Exception as e:
-        console.print(f"[red]Error fetching odds: {e}[/red]")
+        console.print(f"[red]Error fetching schedule: {e}[/red]")
+        return
+
+    if not games:
+        console.print("[yellow]No upcoming games found[/yellow]")
+        return
+
+    # Display games
+    console.print(f"\n[bold cyan]Found {len(games)} upcoming games:[/bold cyan]")
+    for i, game in enumerate(games, 1):
+        start_date = game.get("start_date", "")[:10] if game.get("start_date") else "TBD"
+        console.print(f"  {i}. {game.get('matchup', '?')} - {start_date}")
+
+    console.print(f"  A. [bold]All games[/bold]")
+
+    # Select games
+    choice = Prompt.ask(
+        "\n[cyan]Select games (e.g., '1,2,3' or 'A' for all)[/cyan]",
+        default="A"
+    )
+
+    # Parse selection
+    if choice.upper() == "A":
+        selected = games
+    else:
+        try:
+            indices = [int(x.strip()) - 1 for x in choice.split(",")]
+            selected = [games[i] for i in indices if 0 <= i < len(games)]
+        except (ValueError, IndexError):
+            console.print("[yellow]Invalid selection, using all games[/yellow]")
+            selected = games
+
+    if not selected:
+        console.print("[yellow]No games selected[/yellow]")
+        return
+
+    console.print(f"\n[bold]Fetching odds for {len(selected)} game(s)...[/bold]\n")
+
+    # Fetch odds for each selected game
+    success_count = 0
+    for game in selected:
+        matchup = game.get("matchup", "?")
+        event_id = game.get("event_id")
+
+        if not event_id:
+            console.print(f"[yellow]  Skipping {matchup} - no event ID[/yellow]")
+            continue
+
+        console.print(f"[cyan]  Fetching: {matchup}[/cyan]")
+
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task(f"Fetching odds...", total=None)
+                odds_data = orchestrator.odds_service.scraper.fetch_odds_from_api(event_id)
+
+            if odds_data:
+                path = orchestrator.odds_service.save_odds(odds_data)
+                teams = odds_data.get("teams", {})
+                away = teams.get("away", {}).get("name", "?")
+                home = teams.get("home", {}).get("name", "?")
+                game_date = odds_data.get("game_date", "")[:10]
+
+                console.print(f"    [green]Saved: {away} @ {home} ({game_date})[/green]")
+                console.print(f"    [dim]Path: {path}[/dim]")
+                success_count += 1
+            else:
+                console.print(f"    [yellow]No odds data returned[/yellow]")
+
+        except Exception as e:
+            console.print(f"    [red]Error: {e}[/red]")
+
+    console.print(f"\n[bold green]Complete! Saved odds for {success_count}/{len(selected)} games[/bold green]")
+
+
+def run_fetch_stats(orchestrator: CLIOrchestrator):
+    """Fetch stats from FBRef for selected games (Menu Option 6)."""
+    console.print("\n[bold cyan]Fetch Stats from FBRef[/bold cyan]")
+
+    # Check if sport supports stats
+    if orchestrator.sport != "bundesliga":
+        console.print(f"[yellow]Stats fetching not yet implemented for {orchestrator.sport.upper()}[/yellow]")
+        return
+
+    console.print("[dim]Fetching upcoming games schedule...[/dim]")
+
+    # Fetch schedule (reuse odds service)
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            progress.add_task("Fetching upcoming games...", total=None)
+            games = orchestrator.odds_service.fetch_schedule()
+    except Exception as e:
+        console.print(f"[red]Error fetching schedule: {e}[/red]")
+        return
+
+    if not games:
+        console.print("[yellow]No upcoming games found[/yellow]")
+        return
+
+    # Display games
+    console.print(f"\n[bold cyan]Found {len(games)} upcoming games:[/bold cyan]")
+    for i, game in enumerate(games, 1):
+        start_date = game.get("start_date", "")[:10] if game.get("start_date") else "TBD"
+        console.print(f"  {i}. {game.get('matchup', '?')} - {start_date}")
+
+    console.print(f"  A. [bold]All games[/bold]")
+
+    # Select games
+    choice = Prompt.ask(
+        "\n[cyan]Select games (e.g., '1,2,3' or 'A' for all)[/cyan]",
+        default="A"
+    )
+
+    # Parse selection
+    if choice.upper() == "A":
+        selected = games
+    else:
+        try:
+            indices = [int(x.strip()) - 1 for x in choice.split(",")]
+            selected = [games[i] for i in indices if 0 <= i < len(games)]
+        except (ValueError, IndexError):
+            console.print("[yellow]Invalid selection, using all games[/yellow]")
+            selected = games
+
+    if not selected:
+        console.print("[yellow]No games selected[/yellow]")
+        return
+
+    # Import team lookup
+    import re
+    from sports.futbol.bundesliga.teams import find_team_by_name
+
+    # Collect unique teams from selected games
+    teams_to_fetch = set()
+    for game in selected:
+        matchup = game.get("matchup", "")
+        away_name, home_name = None, None
+
+        # Parse matchup - handle "Away @ Home" or "Away vs Home"
+        if " @ " in matchup:
+            away_name, home_name = matchup.split(" @ ", 1)
+        elif re.search(r'\s+vs\.?\s+', matchup, re.IGNORECASE):
+            # Split on "vs" or "vs." case-insensitive
+            parts = re.split(r'\s+vs\.?\s+', matchup, flags=re.IGNORECASE)
+            if len(parts) == 2:
+                away_name, home_name = parts
+
+        if away_name and home_name:
+            teams_to_fetch.add(away_name.strip())
+            teams_to_fetch.add(home_name.strip())
+
+    console.print(f"\n[bold]Will fetch stats for {len(teams_to_fetch)} team(s)...[/bold]")
+
+    # Step 1: Fetch rankings (once)
+    console.print("\n[cyan]Step 1: Fetching league rankings...[/cyan]")
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            progress.add_task("Fetching rankings from FBRef...", total=None)
+            rankings = orchestrator.stats_service.fetch_rankings()
+
+        if rankings:
+            path = orchestrator.stats_service.save_rankings(rankings)
+            tables_data = rankings.get("tables", {})
+            table_names = list(tables_data.keys())
+            console.print(f"  [green]Saved {len(table_names)} ranking tables[/green]")
+            console.print(f"  [dim]Tables: {', '.join(table_names)}[/dim]")
+            console.print(f"  [dim]Path: {path}[/dim]")
+        else:
+            console.print("  [yellow]No rankings data returned[/yellow]")
+    except Exception as e:
+        console.print(f"  [red]Error fetching rankings: {e}[/red]")
+
+    # Step 2: Fetch team profiles
+    console.print(f"\n[cyan]Step 2: Fetching team profiles...[/cyan]")
+    success_count = 0
+
+    for team_name in sorted(teams_to_fetch):
+        team = find_team_by_name(team_name)
+        if not team:
+            console.print(f"  [yellow]Unknown team: {team_name}[/yellow]")
+            continue
+
+        # FBRef ID for URL (redirects automatically to full URL)
+        team_id = team["fbref_id"]
+        team_slug = team["slug"]  # Used for folder naming
+
+        console.print(f"  [cyan]Fetching: {team['name']}[/cyan]")
+
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task(f"Fetching {team['name']} profile...", total=None)
+                profile = orchestrator.stats_service.fetch_team_profile(team_id)
+
+            if profile:
+                # Use team slug for folder name (e.g., "bayern_munich" not "054efa67")
+                team_slug_clean = team_slug.replace("-Stats", "").lower().replace("-", "_")
+                path = orchestrator.stats_service.save_team_profile(profile, team_slug_clean)
+                tables_data = profile.get("tables", {})
+                table_names = list(tables_data.keys())
+                console.print(f"    [green]Saved {len(table_names)} table(s): {', '.join(table_names)}[/green]")
+                success_count += 1
+            else:
+                console.print(f"    [yellow]No profile data returned[/yellow]")
+
+        except Exception as e:
+            console.print(f"    [red]Error: {e}[/red]")
+
+    console.print(f"\n[bold green]Complete! Fetched profiles for {success_count}/{len(teams_to_fetch)} teams[/bold green]")
 
 
 def run_ev_calculator(orchestrator: CLIOrchestrator):
@@ -424,8 +639,8 @@ def run_ev_calculator(orchestrator: CLIOrchestrator):
             # Run prediction (EV only)
             result = orchestrator.prediction_service.predict_game(
                 game_date=game_date,
-                away_team=game.get("away_name", away),
-                home_team=game.get("home_name", home),
+                away_team=game.get("away_name") or away,
+                home_team=game.get("home_name") or home,
                 odds=odds,
                 run_ev=True,
                 run_ai=False,
@@ -502,13 +717,20 @@ def run_ai_prediction(orchestrator: CLIOrchestrator):
                 progress.add_task(f"Calling Claude API...", total=None)
 
                 # Run prediction (AI only)
+                # Build odds_dir from raw identifiers (matches folder structure)
+                if orchestrator.sport == "bundesliga":
+                    odds_dir = f"sports/futbol/bundesliga/data/odds/{game_date}/{home}_{away}".lower()
+                else:
+                    odds_dir = f"sports/{orchestrator.sport}/data/odds/{game_date}/{home}_{away}".lower()
+
                 result = orchestrator.prediction_service.predict_game(
                     game_date=game_date,
-                    away_team=game.get("away_name", away),
-                    home_team=game.get("home_name", home),
+                    away_team=game.get("away_name") or away,
+                    home_team=game.get("home_name") or home,
                     odds=odds,
                     run_ev=False,
                     run_ai=True,
+                    odds_dir=odds_dir,
                 )
 
             total_cost += result.get("total_cost", 0)
@@ -578,12 +800,18 @@ def run_dual_predictions(orchestrator: CLIOrchestrator):
                 console.print(f"[yellow]  No odds found, skipping[/yellow]")
                 continue
 
+            # Build odds_dir from raw identifiers
+            if orchestrator.sport == "bundesliga":
+                odds_dir = f"sports/futbol/bundesliga/data/odds/{game_date}/{home}_{away}".lower()
+            else:
+                odds_dir = f"sports/{orchestrator.sport}/data/odds/{game_date}/{home}_{away}".lower()
+
             # Run EV first (fast)
             console.print("[dim]  Running EV Calculator...[/dim]")
             ev_result = orchestrator.prediction_service.predict_game(
                 game_date=game_date,
-                away_team=game.get("away_name", away),
-                home_team=game.get("home_name", home),
+                away_team=game.get("away_name") or away,
+                home_team=game.get("home_name") or home,
                 odds=odds,
                 run_ev=True,
                 run_ai=False,
@@ -599,11 +827,12 @@ def run_dual_predictions(orchestrator: CLIOrchestrator):
 
                 ai_result = orchestrator.prediction_service.predict_game(
                     game_date=game_date,
-                    away_team=game.get("away_name", away),
-                    home_team=game.get("home_name", home),
+                    away_team=game.get("away_name") or away,
+                    home_team=game.get("home_name") or home,
                     odds=odds,
                     run_ev=False,
                     run_ai=True,
+                    odds_dir=odds_dir,
                 )
 
             # Combine results
@@ -831,7 +1060,7 @@ def main():
     # Clear screen and show welcome
     console.clear()
     console.print("[bold green]Welcome to Multi-Sport Betting Analysis Tool![/bold green]\n")
-    console.print("[dim]AI-powered predictions for NFL and NBA[/dim]")
+    console.print("[dim]AI-powered predictions for NFL, NBA, and Bundesliga[/dim]")
     console.print("[dim]Using services architecture[/dim]\n")
 
     # Select initial sport
@@ -846,7 +1075,7 @@ def main():
         # Get user choice with styled prompt
         choice = Prompt.ask(
             "\n[bold cyan]Select option[/bold cyan]",
-            choices=["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+            choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
             default="2"
         )
 
@@ -876,21 +1105,26 @@ def main():
             Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
 
         elif choice == "6":
+            # Fetch Stats
+            run_fetch_stats(orchestrator)
+            Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
+
+        elif choice == "7":
             # Fetch Results & Analyze
             run_fetch_results_and_analyze(orchestrator)
             Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
 
-        elif choice == "7":
+        elif choice == "8":
             # View Dashboard
             run_dashboard()
             Prompt.ask("\n[dim]Press Enter to continue[/dim]", default="")
 
-        elif choice == "8":
+        elif choice == "9":
             # Change Sport
             current_sport = select_sport()
             orchestrator = CLIOrchestrator(sport=current_sport["code"])
 
-        elif choice == "9":
+        elif choice == "0":
             # Exit
             console.print("\n[bold green]Exiting... Good luck with your bets! 🎰[/bold green]\n")
             break

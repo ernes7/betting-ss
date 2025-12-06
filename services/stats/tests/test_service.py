@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 
-from services.stats import StatsService, StatsServiceConfig, get_default_config
+from services.stats import StatsService, StatsServiceConfig
 from shared.errors import DataNotFoundError
 
 
@@ -23,13 +23,11 @@ class TestStatsServiceInit:
         service = StatsService(config=test_stats_config, sport="NFL")
         assert service.sport == "nfl"
 
-    def test_init_with_default_config(self):
-        """Test initialization with default config."""
-        service = StatsService(sport="nfl")
-
-        assert service.sport == "nfl"
-        assert service.config is not None
-        assert "team_offense" in service.config.rankings_tables
+    def test_init_requires_config(self):
+        """Test that initialization requires config parameter."""
+        # StatsService now requires config - it's a sport-agnostic black box
+        with pytest.raises(TypeError):
+            StatsService(sport="nfl")  # Missing config
 
 
 class TestStatsServiceSaveLoad:
@@ -169,17 +167,29 @@ class TestStatsServiceAvailability:
 class TestStatsServiceConfig:
     """Tests for configuration."""
 
-    def test_default_nfl_config(self):
-        """Test default NFL configuration."""
-        config = get_default_config("nfl")
+    def test_config_validation(self):
+        """Test config validation."""
+        config = StatsServiceConfig(
+            rankings_url="https://example.com/rankings/",
+            rankings_tables={"team_offense": "team_stats"},
+        )
+        # Should not raise - has required fields
+        config.validate()
 
-        assert "team_offense" in config.rankings_tables
-        assert "team_defense" in config.defensive_tables
-        assert "passing" in config.profile_tables
+    def test_config_validation_fails_without_url(self):
+        """Test config validation fails without rankings_url."""
+        config = StatsServiceConfig(
+            rankings_tables={"team_offense": "team_stats"},
+        )
+        with pytest.raises(ValueError) as exc_info:
+            config.validate()
+        assert "rankings_url" in str(exc_info.value)
 
-    def test_default_unknown_sport(self):
-        """Test default config for unknown sport."""
-        config = get_default_config("unknown")
-
-        assert config.rankings_tables == {}
-        assert config.defensive_tables == {}
+    def test_config_validation_fails_without_tables(self):
+        """Test config validation fails without rankings_tables."""
+        config = StatsServiceConfig(
+            rankings_url="https://example.com/rankings/",
+        )
+        with pytest.raises(ValueError) as exc_info:
+            config.validate()
+        assert "rankings_tables" in str(exc_info.value)
