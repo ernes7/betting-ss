@@ -7,6 +7,7 @@ to generate betting recommendations.
 import json
 import os
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from services.prediction.config import (
@@ -17,6 +18,7 @@ from services.prediction.ev_predictor import EVPredictor
 from services.prediction.ai_predictor import AIPredictor
 from shared.logging import get_logger
 from shared.errors import ErrorHandler, create_error_handler, PredictionError
+from shared.utils.csv_storage import save_csv, load_csv, ensure_directory
 
 
 logger = get_logger("prediction")
@@ -93,10 +95,15 @@ class PredictionService:
             self.ai_predictor = None
 
         self.error_handler = error_handler or create_error_handler("prediction")
-        self._predictions_dir = self.config.data_root.format(sport=self.sport)
+
+        # Use sport config's predictions_dir if available, otherwise use default
+        if hasattr(sport_config, 'predictions_dir') and sport_config.predictions_dir:
+            self._predictions_dir = Path(sport_config.predictions_dir)
+        else:
+            self._predictions_dir = Path(self.config.data_root.format(sport=self.sport))
 
     @property
-    def predictions_dir(self) -> str:
+    def predictions_dir(self) -> Path:
         """Get the predictions data directory path."""
         return self._predictions_dir
 
@@ -111,6 +118,7 @@ class PredictionService:
         home_profile: Optional[Dict[str, Any]] = None,
         run_ev: bool = True,
         run_ai: bool = True,
+        odds_dir: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Generate predictions for a single game.
 
@@ -124,6 +132,7 @@ class PredictionService:
             home_profile: Home team profile (optional)
             run_ev: Whether to run EV prediction
             run_ai: Whether to run AI prediction
+            odds_dir: Path to odds directory (optional, constructed if not provided)
 
         Returns:
             Dictionary with prediction results:
@@ -184,6 +193,15 @@ class PredictionService:
         if run_ai and self.ai_predictor:
             try:
                 ai_start = time.time()
+
+                # Use provided odds_dir or construct from team names (fallback)
+                if odds_dir is None:
+                    game_folder = f"{home_team}_{away_team}".lower().replace(" ", "_").replace(".", "")[:20]
+                    if self.sport == "bundesliga":
+                        odds_dir = f"sports/futbol/bundesliga/data/odds/{game_date}/{game_folder}"
+                    else:
+                        odds_dir = f"sports/{self.sport}/data/odds/{game_date}/{game_folder}"
+
                 ai_prediction = self.ai_predictor.predict(
                     away_team=away_team,
                     home_team=home_team,
@@ -191,6 +209,8 @@ class PredictionService:
                     rankings=rankings,
                     away_profile=away_profile,
                     home_profile=home_profile,
+                    game_date=game_date,
+                    odds_dir=odds_dir,
                 )
                 ai_time = time.time() - ai_start
 
@@ -325,32 +345,36 @@ class PredictionService:
         game_key: str,
         game_date: str,
         prediction_type: str = "dual",
-    ) -> str:
+    ) -> Path:
         """Save prediction to JSON file.
 
         Args:
             prediction: Prediction data
-            game_key: Unique game identifier
+            game_key: Unique game identifier (fallback for filename)
             game_date: Game date in YYYY-MM-DD format
             prediction_type: Type suffix (ev, ai, dual)
 
         Returns:
             Path to saved file
         """
-        date_dir = os.path.join(self._predictions_dir, game_date)
-        os.makedirs(date_dir, exist_ok=True)
-
-        # Extract filename from game_key
-        parts = game_key.split("_")
-        if len(parts) >= 3:
-            filename = f"{'_'.join(parts[1:])}_{prediction_type}.json"
+        # Get team names from matchup if available, otherwise use game_key
+        matchup = prediction.get("matchup", "")
+        if matchup and " @ " in matchup:
+            # "1. FC Heidenheim @ SC Freiburg" -> "1_FC_Heidenheim_vs_SC_Freiburg"
+            away, home = matchup.split(" @ ")
+            filename = f"{away}_vs_{home}".replace(" ", "_").replace(".", "")
         else:
-            filename = f"{game_key}_{prediction_type}.json"
+            # Fallback to game_key
+            filename = game_key
 
-        filepath = os.path.join(date_dir, filename)
+        # Create game directory: predictions/{date}/
+        game_dir = self._predictions_dir / game_date
+        ensure_directory(game_dir)
 
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(prediction, f, indent=2, ensure_ascii=False)
+        # Save prediction as JSON
+        filepath = game_dir / f"{filename}.json"
+        with open(filepath, "w") as f:
+            json.dump(prediction, f, indent=2)
 
         logger.info(f"Saved prediction to {filepath}")
         return filepath
@@ -376,17 +400,13 @@ class PredictionService:
 
         parts = game_key.split("_")
         if len(parts) >= 3:
-            filename = f"{'_'.join(parts[1:])}_{prediction_type}.json"
+            teams = "_".join(parts[1:])
         else:
-            filename = f"{game_key}_{prediction_type}.json"
+            teams = game_key
 
-        filepath = os.path.join(self._predictions_dir, game_date, filename)
+        filepath = self._predictions_dir / game_date / teams / f"prediction_{prediction_type}.csv"
 
-        if not os.path.exists(filepath):
-            return None
-
-        with open(filepath, "r", encoding="utf-8") as f:
-            return json.load(f)
+        return load_csv(filepath, as_dict=True)
 
     def _filter_odds(self, odds: Dict[str, Any]) -> Dict[str, Any]:
         """Filter odds based on configuration.

@@ -2,8 +2,7 @@
 
 import pytest
 import tempfile
-import os
-import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from services.results import ResultsService, ResultsServiceConfig, get_default_config
@@ -37,7 +36,7 @@ class TestResultsServiceInit:
         """Test that results_dir property is formatted correctly."""
         service = ResultsService(sport="nfl", config=test_results_config)
 
-        assert "nfl" in service.results_dir
+        assert "nfl" in str(service.results_dir)
 
 
 class TestResultsServiceBuildUrl:
@@ -95,8 +94,8 @@ class TestResultsServiceSaveLoad:
             # Save
             filepath = service.save_result(sample_result_data, game_key)
 
-            assert os.path.exists(filepath)
-            assert filepath.endswith(".json")
+            assert filepath.exists()
+            assert filepath.name == "result.csv"
 
             # Load
             loaded = service.load_result(game_key)

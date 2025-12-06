@@ -1,47 +1,39 @@
-"""Shared scraping utilities with configurable settings.
+"""Shared scraping utilities using pandas.
 
-This module provides reusable scraping components that can be configured
-via constructor injection for different services.
+This module provides a unified Scraper class for both HTML table
+extraction and JSON API fetching.
 
 Example:
-    from shared.scraping import WebScraper, ScraperConfig, TableExtractor
+    from shared.scraping import Scraper, ScraperConfig, PFR_CONFIG
 
-    # Create config for odds service
-    config = ScraperConfig(interval_seconds=12.0, timeout_ms=30000)
-    scraper = WebScraper(config=config)
+    # Create scraper with default config
+    scraper = Scraper()
 
-    with scraper.launch() as page:
-        scraper.navigate_and_wait(page, url)
-        data = TableExtractor.extract(page, "player_stats")
+    # Or with custom config
+    scraper = Scraper(ScraperConfig(delay_seconds=5.0))
+
+    # Scrape HTML tables
+    tables = scraper.scrape_tables(url, column_map={"Tm": "team"})
+
+    # Scrape JSON API
+    df = scraper.scrape_api(url, parser=my_parser_fn)
 """
 
+from shared.scraping.scraper import Scraper
 from shared.scraping.scraper_config import (
     ScraperConfig,
-    RateLimitConfig,
-    ODDS_SCRAPER_CONFIG,
-    RESULTS_SCRAPER_CONFIG,
-    PREDICTIONS_SCRAPER_CONFIG,
-    SPORTS_REFERENCE_RATE_LIMIT,
-    DRAFTKINGS_RATE_LIMIT,
+    PFR_CONFIG,
+    DRAFTKINGS_CONFIG,
+    FBREF_CONFIG,
 )
-from shared.scraping.web_scraper import WebScraper
-from shared.scraping.rate_limiter import create_rate_limiter, RateLimiter
-from shared.scraping.table_extractor import TableExtractor
 
 __all__ = [
-    # Config classes
+    # Main scraper class
+    "Scraper",
+    # Config class
     "ScraperConfig",
-    "RateLimitConfig",
     # Default configs
-    "ODDS_SCRAPER_CONFIG",
-    "RESULTS_SCRAPER_CONFIG",
-    "PREDICTIONS_SCRAPER_CONFIG",
-    "SPORTS_REFERENCE_RATE_LIMIT",
-    "DRAFTKINGS_RATE_LIMIT",
-    # Scraper classes
-    "WebScraper",
-    "TableExtractor",
-    # Rate limiting
-    "create_rate_limiter",
-    "RateLimiter",
+    "PFR_CONFIG",
+    "DRAFTKINGS_CONFIG",
+    "FBREF_CONFIG",
 ]

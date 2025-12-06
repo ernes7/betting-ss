@@ -93,20 +93,16 @@ Define URLs, mapeo de tablas y configuracion.
 ```python
 """Constantes de configuracion para scraping y analisis de {DEPORTE}."""
 
-from shared.config import (
-    SPORTS_REFERENCE_RATE_LIMIT_CALLS,
-    SPORTS_REFERENCE_RATE_LIMIT_PERIOD,
-)
+from config import settings
 
-# Ano de temporada actual
-CURRENT_YEAR = 2025
+# Ano de temporada actual (agregar a config/settings.yaml bajo seasons:{deporte}: ANO)
+CURRENT_YEAR = settings['seasons']['{deporte}']
 
-# Monto fijo de apuesta para calculos de P&L
-FIXED_BET_AMOUNT = 100
+# Limitacion de tasa (usar limites globales de Sports-Reference desde config)
+REF_RATE_LIMIT_CALLS = settings['scraping']['sports_reference']['rate_limit_calls']
+REF_RATE_LIMIT_PERIOD = settings['scraping']['sports_reference']['rate_limit_period']
 
-# Limitacion de tasa (usar limites globales de Sports-Reference)
-REF_RATE_LIMIT_CALLS = SPORTS_REFERENCE_RATE_LIMIT_CALLS
-REF_RATE_LIMIT_PERIOD = SPORTS_REFERENCE_RATE_LIMIT_PERIOD
+# Monto fijo de apuesta disponible via: settings['betting']['fixed_bet_amount']
 
 # URLs del sitio de referencia
 STATS_URL = f"https://www.{deporte}-reference.com/years/{CURRENT_YEAR}/"

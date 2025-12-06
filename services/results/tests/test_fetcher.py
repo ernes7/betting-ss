@@ -2,6 +2,7 @@
 
 import pytest
 from unittest.mock import MagicMock, patch
+import pandas as pd
 
 from services.results import ResultsFetcher, ResultsServiceConfig, get_default_config
 from shared.errors import ResultsFetchError, ResultsParseError
@@ -32,54 +33,6 @@ class TestResultsFetcherInit:
         assert "scoring" in fetcher.config.result_tables
 
 
-class TestResultsFetcherResponseHandling:
-    """Tests for response status handling."""
-
-    def test_check_response_404(self, mock_fetcher, mock_scraper):
-        """Test 404 response raises appropriate error."""
-        scraper, page, response = mock_scraper
-        response.status = 404
-
-        with pytest.raises(ResultsFetchError) as exc_info:
-            mock_fetcher._check_response_status(response, "http://example.com")
-
-        assert "404" in str(exc_info.value)
-
-    def test_check_response_429(self, mock_fetcher, mock_scraper):
-        """Test 429 rate limit response raises appropriate error."""
-        scraper, page, response = mock_scraper
-        response.status = 429
-
-        with pytest.raises(ResultsFetchError) as exc_info:
-            mock_fetcher._check_response_status(response, "http://example.com")
-
-        assert "429" in str(exc_info.value)
-        assert "Rate limited" in str(exc_info.value)
-
-    def test_check_response_500(self, mock_fetcher, mock_scraper):
-        """Test 500 error response raises appropriate error."""
-        scraper, page, response = mock_scraper
-        response.status = 500
-
-        with pytest.raises(ResultsFetchError) as exc_info:
-            mock_fetcher._check_response_status(response, "http://example.com")
-
-        assert "500" in str(exc_info.value)
-
-    def test_check_response_200_success(self, mock_fetcher, mock_scraper):
-        """Test 200 response does not raise error."""
-        scraper, page, response = mock_scraper
-        response.status = 200
-
-        # Should not raise
-        mock_fetcher._check_response_status(response, "http://example.com")
-
-    def test_check_response_none(self, mock_fetcher):
-        """Test None response does not raise error."""
-        # Should not raise
-        mock_fetcher._check_response_status(None, "http://example.com")
-
-
 class TestResultsFetcherFileHandling:
     """Tests for file-based result extraction."""
 
@@ -96,43 +49,54 @@ class TestResultsFetcherFileHandling:
 class TestResultsFetcherTableExtraction:
     """Tests for table extraction."""
 
-    def test_extract_tables_all_found(self, mock_fetcher, mock_scraper):
-        """Test extracting tables when all are found."""
-        scraper, page, response = mock_scraper
-        result_data = {"tables": {}}
+    def test_dataframe_to_dict(self, mock_fetcher):
+        """Test converting DataFrame to dict format."""
+        df = pd.DataFrame({
+            "col1": [1, 2, 3],
+            "col2": ["a", "b", "c"]
+        })
 
-        # Mock TableExtractor to return data for all tables
-        with patch("shared.scraping.TableExtractor") as MockExtractor:
-            MockExtractor.extract.return_value = {
-                "table_name": "test",
-                "data": [{"col": "value"}]
-            }
+        result = mock_fetcher._dataframe_to_dict(df, "test_table")
 
-            extracted, missing = mock_fetcher._extract_tables(page, result_data)
+        assert result["table_name"] == "test_table"
+        assert result["columns"] == ["col1", "col2"]
+        assert len(result["data"]) == 3
+        assert result["data"][0] == {"col1": 1, "col2": "a"}
 
-        assert extracted == len(mock_fetcher.config.result_tables)
-        assert len(missing) == 0
+    def test_dataframe_to_dict_multiindex(self, mock_fetcher):
+        """Test converting DataFrame with MultiIndex columns."""
+        df = pd.DataFrame({
+            ("Level1", "col1"): [1, 2],
+            ("Level1", "col2"): [3, 4]
+        })
 
-    def test_extract_tables_some_missing(self, mock_fetcher, mock_scraper):
-        """Test extracting tables when some are missing."""
-        scraper, page, response = mock_scraper
-        result_data = {"tables": {}}
+        result = mock_fetcher._dataframe_to_dict(df, "test_table")
 
-        # Mock TableExtractor to return None for some tables
-        call_count = [0]
+        # MultiIndex should be flattened
+        assert all("_" in col or col.startswith("Level1") for col in result["columns"])
 
-        def mock_extract(page, table_id):
-            call_count[0] += 1
-            if call_count[0] % 2 == 0:
-                return None
-            return {"table_name": table_id, "data": []}
+    def test_find_table_by_columns_scoring(self, mock_fetcher):
+        """Test finding scoring table by column pattern."""
+        tables = [
+            pd.DataFrame({"A": [1], "B": [2]}),
+            pd.DataFrame({"1": [0], "2": [7], "3": [3], "4": [10], "Final": [20]}),
+        ]
 
-        with patch("shared.scraping.TableExtractor") as MockExtractor:
-            MockExtractor.extract.side_effect = mock_extract
+        result = mock_fetcher._find_table_by_columns(tables, "scoring")
 
-            extracted, missing = mock_fetcher._extract_tables(page, result_data)
+        assert result is not None
+        assert result["table_name"] == "scoring"
 
-        assert len(missing) > 0
+    def test_find_table_by_columns_not_found(self, mock_fetcher):
+        """Test finding table when pattern doesn't match."""
+        tables = [
+            pd.DataFrame({"A": [1], "B": [2]}),
+            pd.DataFrame({"C": [3], "D": [4]}),
+        ]
+
+        result = mock_fetcher._find_table_by_columns(tables, "scoring")
+
+        assert result is None
 
 
 class TestResultsFetcherSplitOffense:
@@ -168,3 +132,18 @@ class TestResultsFetcherNBA:
         assert fetcher.sport == "nba"
         assert "line_score" in fetcher.config.result_tables
         assert "four_factors" in fetcher.config.result_tables
+
+
+class TestResultsFetcherIntegration:
+    """Integration tests for ResultsFetcher."""
+
+    def test_initialize_result_data(self, mock_fetcher):
+        """Test result data initialization."""
+        result = mock_fetcher._initialize_result_data("http://test.com")
+
+        assert result["sport"] == "nfl"
+        assert result["boxscore_url"] == "http://test.com"
+        assert result["teams"] == {"away": None, "home": None}
+        assert result["final_score"] == {"away": None, "home": None}
+        assert result["tables"] == {}
+        assert "fetched_at" in result

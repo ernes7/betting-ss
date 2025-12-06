@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 
-from services.odds import OddsScraper, OddsServiceConfig, get_default_config
+from services.odds import OddsScraper, OddsServiceConfig
 from shared.errors import OddsFetchError, OddsParseError
 
 
@@ -103,6 +103,8 @@ class TestOddsScraperMarketFiltering:
         """Test that only included markets are processed."""
         # Create config with only moneyline included
         config = OddsServiceConfig(
+            api_url_template="https://example.com/api/events/{event_id}/categories",
+            market_name_map={"Passing Yards Milestones": "passing_yards"},
             included_markets={"Moneyline"},
             excluded_markets=set(),
         )
@@ -114,14 +116,48 @@ class TestOddsScraperMarketFiltering:
         assert "moneyline" in odds["game_lines"]
 
 
-class TestOddsScraperNBA:
-    """Tests for NBA-specific scraping."""
+class TestOddsScraperConfig:
+    """Tests for config validation."""
 
-    def test_nba_config(self):
-        """Test that NBA config is loaded correctly."""
-        config = get_default_config("nba")
-        scraper = OddsScraper(config=config, sport="nba")
+    def test_requires_api_url_template(self):
+        """Test that scraper requires api_url_template in config."""
+        config = OddsServiceConfig(
+            market_name_map={"Passing Yards Milestones": "passing_yards"},
+            included_markets={"Moneyline"},
+        )
 
-        assert scraper.sport == "nba"
-        assert "Points Milestones" in scraper.config.included_markets
-        assert "Rebounds Milestones" in scraper.config.included_markets
+        with pytest.raises(ValueError) as exc_info:
+            OddsScraper(config=config, sport="nfl")
+
+        assert "api_url_template" in str(exc_info.value)
+
+    def test_uses_config_api_url(self, test_odds_config):
+        """Test that scraper uses API URL from config."""
+        scraper = OddsScraper(config=test_odds_config, sport="test")
+
+        # The config should be stored
+        assert scraper.config.api_url_template == test_odds_config.api_url_template
+
+
+class TestOddsScraperSchedule:
+    """Tests for OddsScraper schedule fetching."""
+
+    def test_fetch_schedule_requires_league_url(self, test_scraper_config):
+        """Test that fetch_schedule raises error when league_url not configured."""
+        config = OddsServiceConfig(
+            api_url_template="https://example.com/api/events/{event_id}/categories",
+            league_url="",  # No league URL
+            market_name_map={"Passing Yards Milestones": "passing_yards"},
+        )
+        scraper = OddsScraper(config=config, sport="nfl")
+
+        with pytest.raises(OddsFetchError) as exc_info:
+            scraper.fetch_schedule()
+
+        assert "league_url not configured" in str(exc_info.value)
+
+    def test_fetch_schedule_has_league_url(self, test_odds_config):
+        """Test that scraper has league_url in config."""
+        scraper = OddsScraper(config=test_odds_config, sport="nfl")
+
+        assert scraper.config.league_url == "https://example.com/api/leagues/12345"

@@ -50,7 +50,7 @@ class CLIServiceConfig:
     workflow: WorkflowConfig = field(default_factory=WorkflowConfig)
     display: DisplayConfig = field(default_factory=DisplayConfig)
     default_sport: str = "nfl"
-    enabled_sports: tuple = ("nfl", "nba")
+    enabled_sports: tuple = ("nfl", "nba", "bundesliga")
     fixed_bet_amount: float = 100.0
 
 

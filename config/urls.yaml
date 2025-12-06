@@ -1,23 +1,48 @@
 # URL Configuration for all data sources
-# Externalized to avoid hardcoding URLs in code
 
+# =============================================================================
+# DRAFTKINGS (JSON API)
+# =============================================================================
 draftkings:
   nfl:
-    schedule: "https://sportsbook.draftkings.com/leagues/football/nfl"
-    game_prefix: "https://sportsbook.draftkings.com/event/"
-  nba:
-    schedule: "https://sportsbook.draftkings.com/leagues/basketball/nba"
-    game_prefix: "https://sportsbook.draftkings.com/event/"
+    # League ID 88808 = NFL
+    league_api: "https://sportsbook-nash.draftkings.com/api/sportscontent/dkusnj/v1/leagues/88808"
+    event_api: "https://sportsbook-nash.draftkings.com/api/sportscontent/dkusnj/v1/events/{event_id}/categories"
 
-reference:
-  nfl:
-    base: "https://www.pro-football-reference.com"
-    stats: "https://www.pro-football-reference.com/years/{year}/"
-    defensive_stats: "https://www.pro-football-reference.com/years/{year}/opp.htm"
-    team_profile: "https://www.pro-football-reference.com/teams/{team_abbr}/{year}.htm"
-    boxscore: "https://www.pro-football-reference.com/boxscores/{date}0{home_abbr}.htm"
+  # TODO: Find NBA league ID
   nba:
-    base: "https://www.basketball-reference.com"
-    stats: "https://www.basketball-reference.com/leagues/NBA_{year}.html"
-    team_profile: "https://www.basketball-reference.com/teams/{team_abbr}/{year}.html"
-    boxscore: "https://www.basketball-reference.com/boxscores/{game_id}.html"
+    league_api: ""
+    event_api: ""
+
+  # TODO: Find Bundesliga league ID
+  bundesliga:
+    league_api: ""
+    event_api: ""
+
+# =============================================================================
+# PRO-FOOTBALL-REFERENCE (NFL)
+# =============================================================================
+pro_football_reference:
+  base: "https://www.pro-football-reference.com"
+  rankings: "https://www.pro-football-reference.com/years/{year}/"
+  defensive_rankings: "https://www.pro-football-reference.com/years/{year}/opp.htm"
+  team_profile: "https://www.pro-football-reference.com/teams/{team_abbr}/{year}.htm"
+
+# =============================================================================
+# BASKETBALL-REFERENCE (NBA)
+# NOTE: These URLs are outdated and need verification
+# =============================================================================
+basketball_reference:
+  base: "https://www.basketball-reference.com"
+  # TODO: Verify these URLs still work
+  stats: "https://www.basketball-reference.com/leagues/NBA_{year}.html"
+  team_profile: "https://www.basketball-reference.com/teams/{team_abbr}/{year}.html"
+
+# =============================================================================
+# FBREF (BUNDESLIGA / SOCCER)
+# =============================================================================
+fbref:
+  base: "https://fbref.com"
+  # TODO: Add Bundesliga-specific URLs
+  bundesliga_stats: ""
+  team_profile: ""

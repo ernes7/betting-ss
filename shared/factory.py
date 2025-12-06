@@ -4,7 +4,7 @@ from typing import Any
 
 
 class Sport:
-    """Facade class combining scraper and predictor for a sport."""
+    """Facade class for sport configuration and predictor."""
 
     def __init__(self, config: Any):
         """Initialize sport with configuration.
@@ -12,10 +12,9 @@ class Sport:
         Args:
             config: Sport configuration object
         """
-        from shared.base import Scraper, Predictor
+        from shared.base import Predictor
 
         self.config = config
-        self.scraper = Scraper(config)
         self.predictor = Predictor(config)
 
 

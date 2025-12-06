@@ -8,10 +8,12 @@ def register_all_sports():
     # Import sport configs here to avoid circular imports
     from sports.nfl.nfl_config import NFLConfig
     from sports.nba.nba_config import NBAConfig
+    from sports.futbol.bundesliga.bundesliga_config import BundesligaConfig
 
     # Register each sport
     SportFactory.register("nfl", NFLConfig)
     SportFactory.register("nba", NBAConfig)
+    SportFactory.register("bundesliga", BundesligaConfig)
 
 
 # Auto-register on module import

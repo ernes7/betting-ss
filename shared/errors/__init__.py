@@ -27,6 +27,9 @@ from shared.errors.exceptions import (
     ResultsError,
     ResultsFetchError,
     ResultsParseError,
+    StatsError,
+    StatsFetchError,
+    StatsParseError,
     AnalysisError,
     AnalysisDataError,
     # Scraping
@@ -59,6 +62,9 @@ __all__ = [
     "ResultsError",
     "ResultsFetchError",
     "ResultsParseError",
+    "StatsError",
+    "StatsFetchError",
+    "StatsParseError",
     "AnalysisError",
     "AnalysisDataError",
     # Scraping

@@ -102,7 +102,7 @@ def print_cost_info(
         output_tokens: Number of output tokens
         total_tokens: Total tokens used
     """
-    from shared.config import format_cost_display
+    from shared.utils.api_utils import format_cost_display
 
     console.print()
     console.print("[bold]API Usage:[/bold]")

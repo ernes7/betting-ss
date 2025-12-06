@@ -1,4 +1,4 @@
-"""Path configuration for data storage across sports.
+"""Path utilities for data storage across sports.
 
 This module provides centralized path management using templates
 that can be dynamically populated based on sport and data type.

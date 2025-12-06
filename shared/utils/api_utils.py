@@ -1,19 +1,9 @@
-"""API configuration constants for Claude AI integration."""
+"""API utilities for Claude AI cost calculations."""
 
-# Claude API Model Configuration
-CLAUDE_MODEL = "claude-sonnet-4-5-20250929"
-CLAUDE_MODEL_ALIAS = "Sonnet 4.5"
-
-# API Cost per Million Tokens (in dollars)
-CLAUDE_INPUT_COST_PER_MTOK = 3.0  # $3 per MTok input
-CLAUDE_OUTPUT_COST_PER_MTOK = 15.0  # $15 per MTok output
-
-# API Request Configuration
-MAX_TOKENS = 16000  # Maximum tokens for response
-TEMPERATURE = 0.7  # Temperature for text generation
+from config import settings
 
 
-def calculate_api_cost(input_tokens: int, output_tokens: int, model: str = CLAUDE_MODEL) -> float:
+def calculate_api_cost(input_tokens: int, output_tokens: int, model: str | None = None) -> float:
     """Calculate total API cost based on token usage.
 
     Args:
@@ -24,6 +14,10 @@ def calculate_api_cost(input_tokens: int, output_tokens: int, model: str = CLAUD
     Returns:
         Total cost in dollars
     """
+    # Get default model from settings if not provided
+    if model is None:
+        model = settings['api']['claude']['model']
+
     # Determine pricing based on model
     # Claude Haiku 4.5: $0.80/MTok input, $4/MTok output
     # Claude Sonnet 4.5: $3/MTok input, $15/MTok output
@@ -31,8 +25,8 @@ def calculate_api_cost(input_tokens: int, output_tokens: int, model: str = CLAUD
         input_cost_per_mtok = 0.80
         output_cost_per_mtok = 4.0
     else:  # Sonnet (default)
-        input_cost_per_mtok = CLAUDE_INPUT_COST_PER_MTOK
-        output_cost_per_mtok = CLAUDE_OUTPUT_COST_PER_MTOK
+        input_cost_per_mtok = settings['api']['claude']['input_cost_per_mtok']
+        output_cost_per_mtok = settings['api']['claude']['output_cost_per_mtok']
 
     input_cost = (input_tokens / 1_000_000) * input_cost_per_mtok
     output_cost = (output_tokens / 1_000_000) * output_cost_per_mtok

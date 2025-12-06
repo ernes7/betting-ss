@@ -9,7 +9,7 @@ from anthropic import Anthropic
 
 from shared.base.sport_config import SportConfig
 from shared.repositories import PredictionRepository, ResultsRepository, AnalysisRepository, EVResultsRepository
-from shared.config import calculate_api_cost
+from shared.utils.api_utils import calculate_api_cost
 from shared.utils.timezone_utils import get_eastern_now
 
 

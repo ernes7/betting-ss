@@ -67,7 +67,7 @@ class TestPredictionServiceInit:
                 config=test_prediction_config,
             )
 
-        assert "nfl" in service.predictions_dir
+        assert "nfl" in str(service.predictions_dir)
 
 
 class TestPredictionServicePredictGame:

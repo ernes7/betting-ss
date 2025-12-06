@@ -5,7 +5,7 @@ import json
 from shared.base.analyzer import BaseAnalyzer
 from shared.base.sport_config import SportConfig
 from shared.repositories import PredictionRepository, ResultsRepository, AnalysisRepository
-from sports.nfl.constants import FIXED_BET_AMOUNT
+from config import settings
 
 
 class NFLAnalyzer(BaseAnalyzer):
@@ -76,9 +76,9 @@ For each bet, determine if it WON or LOST and calculate profit/loss. Keep it con
    - Combined yards: Sum rush_yds + rec_yds
 
 3. **Profit/Loss:**
-   - Bet amount: ${FIXED_BET_AMOUNT} per bet
-   - **WON**: Profit = ${FIXED_BET_AMOUNT} × (Odds / 100)
-   - **LOST**: Profit = -${FIXED_BET_AMOUNT}
+   - Bet amount: ${settings['betting']['fixed_bet_amount']} per bet
+   - **WON**: Profit = ${settings['betting']['fixed_bet_amount']} × (Odds / 100)
+   - **LOST**: Profit = -${settings['betting']['fixed_bet_amount']}
 
 **OUTPUT FORMAT:**
 
@@ -98,7 +98,7 @@ Return valid JSON (no reasoning per bet, just actual value):
       "actual_numeric": 299,
       "stat_type": "passing_yards",
       "direction": "over",
-      "stake": {FIXED_BET_AMOUNT},
+      "stake": {settings['betting']['fixed_bet_amount']},
       "profit": 150.00
     }},
     {{
@@ -112,7 +112,7 @@ Return valid JSON (no reasoning per bet, just actual value):
       "actual_numeric": 99,
       "stat_type": "receiving_yards",
       "direction": "under",
-      "stake": {FIXED_BET_AMOUNT},
+      "stake": {settings['betting']['fixed_bet_amount']},
       "profit": -100.00
     }}
   ],
@@ -148,7 +148,7 @@ Return valid JSON (no reasoning per bet, just actual value):
 - `bets_lost`: Count of bets where won = false
 - `win_rate`: (bets_won / total_bets) × 100
 - `total_profit`: Sum of all profit values (can be negative)
-- `total_staked`: total_bets × ${FIXED_BET_AMOUNT}
+- `total_staked`: total_bets × ${settings['betting']['fixed_bet_amount']}
 - `roi_percent`: (total_profit / total_staked) × 100
 - `avg_predicted_ev`: Average of all ev_percent values from prediction
 - `realized_ev`: Actual edge realized based on results

@@ -67,6 +67,21 @@ class ResultsParseError(ResultsError):
     pass
 
 
+class StatsError(BettingError):
+    """Errors related to the STATS service."""
+    pass
+
+
+class StatsFetchError(StatsError):
+    """Failed to fetch stats from source."""
+    pass
+
+
+class StatsParseError(StatsError):
+    """Failed to parse stats data."""
+    pass
+
+
 class AnalysisError(BettingError):
     """Errors related to the ANALYSIS service."""
     pass

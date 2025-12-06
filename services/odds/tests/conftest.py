@@ -10,32 +10,68 @@ from services.odds import (
     OddsServiceConfig,
     OddsScraper,
     DraftKingsParser,
-    NFL_INCLUDED_MARKETS,
-    NFL_EXCLUDED_MARKETS,
 )
 from shared.scraping import ScraperConfig
+
+
+# Test market configurations
+TEST_MARKET_NAME_MAP = {
+    "Passing Yards Milestones": "passing_yards",
+    "Passing Touchdowns Milestones": "passing_tds",
+    "Rushing Yards Milestones": "rushing_yards",
+    "Receiving Yards Milestones": "receiving_yards",
+}
+
+TEST_INCLUDED_MARKETS = {
+    "Moneyline", "Spread", "Total",
+    "Passing Yards Milestones",
+    "Rushing Yards Milestones",
+    "Receiving Yards Milestones",
+    "Anytime Touchdown Scorer",
+}
+
+TEST_EXCLUDED_MARKETS = {
+    "1st Quarter Moneyline",
+    "1st Half Moneyline",
+}
+
+# Market categories for parsing strategy
+TEST_PLAYER_PROP_MARKETS = {
+    "Anytime Touchdown Scorer",
+}
+
+TEST_MILESTONE_MARKETS = {
+    "Passing Yards Milestones",
+    "Rushing Yards Milestones",
+    "Receiving Yards Milestones",
+}
+
+TEST_GAME_PROP_MARKETS: set[str] = set()  # Empty for NFL tests
 
 
 @pytest.fixture
 def test_scraper_config() -> ScraperConfig:
     """Fast scraper config for tests."""
     return ScraperConfig(
-        interval_seconds=0.1,
-        timeout_ms=5000,
+        delay_seconds=0.1,
+        timeout=5,
         max_retries=1,
-        retry_delay_seconds=0.1,
-        headless=True,
-        wait_time_ms=100,
     )
 
 
 @pytest.fixture
 def test_odds_config(test_scraper_config) -> OddsServiceConfig:
-    """Test odds service configuration."""
+    """Test odds service configuration with all required fields."""
     return OddsServiceConfig(
+        api_url_template="https://example.com/api/events/{event_id}/categories",
+        league_url="https://example.com/api/leagues/12345",
+        market_name_map=TEST_MARKET_NAME_MAP,
         scraper_config=test_scraper_config,
-        included_markets=NFL_INCLUDED_MARKETS,
-        excluded_markets=NFL_EXCLUDED_MARKETS,
+        included_markets=TEST_INCLUDED_MARKETS,
+        excluded_markets=TEST_EXCLUDED_MARKETS,
+        player_prop_markets=TEST_PLAYER_PROP_MARKETS,
+        milestone_markets=TEST_MILESTONE_MARKETS,
+        game_prop_markets=TEST_GAME_PROP_MARKETS,
     )
 
 
@@ -58,10 +94,16 @@ def odds_service(test_odds_config, tmp_path) -> OddsService:
     """OddsService with temp directory."""
     # Override data root to use temp directory
     config = OddsServiceConfig(
+        api_url_template=test_odds_config.api_url_template,
+        league_url=test_odds_config.league_url,
+        market_name_map=test_odds_config.market_name_map,
         scraper_config=test_odds_config.scraper_config,
         data_root=str(tmp_path / "{sport}" / "data" / "odds"),
         included_markets=test_odds_config.included_markets,
         excluded_markets=test_odds_config.excluded_markets,
+        player_prop_markets=test_odds_config.player_prop_markets,
+        milestone_markets=test_odds_config.milestone_markets,
+        game_prop_markets=test_odds_config.game_prop_markets,
     )
     return OddsService(sport="nfl", config=config)
 
@@ -222,3 +264,44 @@ def saved_odds_file(temp_odds_dir, sample_odds_data) -> Path:
     filepath.write_text(json.dumps(sample_odds_data, indent=2))
 
     return filepath
+
+
+@pytest.fixture
+def sample_schedule_data() -> list[dict]:
+    """Sample schedule data from league API."""
+    return [
+        {
+            "event_id": "28937481",
+            "matchup": "NYG @ DAL",
+            "start_date": "2024-12-01T18:00:00Z",
+        },
+        {
+            "event_id": "28937482",
+            "matchup": "PHI @ WAS",
+            "start_date": "2024-12-01T13:00:00Z",
+        },
+        {
+            "event_id": "28937483",
+            "matchup": "BUF @ MIA",
+            "start_date": "2024-12-01T20:00:00Z",
+        },
+    ]
+
+
+@pytest.fixture
+def sample_league_api_response() -> dict:
+    """Sample DraftKings league API response."""
+    return {
+        "events": [
+            {
+                "id": "28937481",
+                "name": "NYG @ DAL",
+                "startEventDate": "2024-12-01T18:00:00Z",
+            },
+            {
+                "id": "28937482",
+                "name": "PHI @ WAS",
+                "startEventDate": "2024-12-01T13:00:00Z",
+            },
+        ]
+    }
