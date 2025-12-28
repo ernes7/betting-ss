@@ -450,13 +450,17 @@ def run_fetch_odds(orchestrator: CLIOrchestrator):
 
 
 def run_fetch_stats(orchestrator: CLIOrchestrator):
-    """Fetch stats from FBRef for selected games (Menu Option 6)."""
-    console.print("\n[bold cyan]Fetch Stats from FBRef[/bold cyan]")
-
-    # Check if sport supports stats
-    if orchestrator.sport != "bundesliga":
+    """Fetch stats from reference sites for selected teams (Menu Option 6)."""
+    # Set source name based on sport
+    if orchestrator.sport == "nfl":
+        source_name = "Pro-Football-Reference"
+    elif orchestrator.sport == "bundesliga":
+        source_name = "FBRef"
+    else:
         console.print(f"[yellow]Stats fetching not yet implemented for {orchestrator.sport.upper()}[/yellow]")
         return
+
+    console.print(f"\n[bold cyan]Fetch Stats from {source_name}[/bold cyan]")
 
     console.print("[dim]Fetching upcoming games schedule...[/dim]")
 
@@ -506,9 +510,12 @@ def run_fetch_stats(orchestrator: CLIOrchestrator):
         console.print("[yellow]No games selected[/yellow]")
         return
 
-    # Import team lookup
+    # Import team lookup based on sport
     import re
-    from sports.futbol.bundesliga.teams import find_team_by_name
+    if orchestrator.sport == "nfl":
+        from sports.nfl.teams import find_team_by_abbr as find_nfl_team
+    elif orchestrator.sport == "bundesliga":
+        from sports.futbol.bundesliga.teams import find_team_by_name as find_bundesliga_team
 
     # Collect unique teams from selected games
     teams_to_fetch = set()
@@ -539,7 +546,7 @@ def run_fetch_stats(orchestrator: CLIOrchestrator):
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            progress.add_task("Fetching rankings from FBRef...", total=None)
+            progress.add_task(f"Fetching rankings from {source_name}...", total=None)
             rankings = orchestrator.stats_service.fetch_rankings()
 
         if rankings:
@@ -559,16 +566,31 @@ def run_fetch_stats(orchestrator: CLIOrchestrator):
     success_count = 0
 
     for team_name in sorted(teams_to_fetch):
-        team = find_team_by_name(team_name)
-        if not team:
+        # Resolve team based on sport
+        if orchestrator.sport == "nfl":
+            team = find_nfl_team(team_name)
+            if not team:
+                console.print(f"  [yellow]Unknown team: {team_name}[/yellow]")
+                continue
+            # PFR uses lowercase abbreviations for URLs (e.g., 'atl', 'tam')
+            team_id = team["pfr_abbr"]
+            # But store profiles by full team name (e.g., 'atlanta_falcons')
+            team_slug = team["name"].lower().replace(" ", "_")
+            display_name = team["name"]
+        elif orchestrator.sport == "bundesliga":
+            team = find_bundesliga_team(team_name)
+            if not team:
+                console.print(f"  [yellow]Unknown team: {team_name}[/yellow]")
+                continue
+            # FBRef ID for URL (redirects automatically to full URL)
+            team_id = team["fbref_id"]
+            team_slug = team["slug"]  # Used for folder naming
+            display_name = team["name"]
+        else:
             console.print(f"  [yellow]Unknown team: {team_name}[/yellow]")
             continue
 
-        # FBRef ID for URL (redirects automatically to full URL)
-        team_id = team["fbref_id"]
-        team_slug = team["slug"]  # Used for folder naming
-
-        console.print(f"  [cyan]Fetching: {team['name']}[/cyan]")
+        console.print(f"  [cyan]Fetching: {display_name}[/cyan]")
 
         try:
             with Progress(
@@ -576,12 +598,16 @@ def run_fetch_stats(orchestrator: CLIOrchestrator):
                 TextColumn("[progress.description]{task.description}"),
                 console=console,
             ) as progress:
-                progress.add_task(f"Fetching {team['name']} profile...", total=None)
+                progress.add_task(f"Fetching {display_name} profile...", total=None)
                 profile = orchestrator.stats_service.fetch_team_profile(team_id)
 
             if profile:
-                # Use team slug for folder name (e.g., "bayern_munich" not "054efa67")
-                team_slug_clean = team_slug.replace("-Stats", "").lower().replace("-", "_")
+                # Use team slug for folder name
+                if orchestrator.sport == "bundesliga":
+                    team_slug_clean = team_slug.replace("-Stats", "").lower().replace("-", "_")
+                else:
+                    # NFL already uses full team name, just ensure lowercase
+                    team_slug_clean = team_slug
                 path = orchestrator.stats_service.save_team_profile(profile, team_slug_clean)
                 tables_data = profile.get("tables", {})
                 table_names = list(tables_data.keys())

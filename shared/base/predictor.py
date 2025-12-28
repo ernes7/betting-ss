@@ -173,6 +173,17 @@ class Predictor:
             if home_team_info:
                 home_team = home_team_info["name"]
             print(f"  Resolved: team_a='{team_a}', team_b='{team_b}', home_team='{home_team}'")
+        elif self.config.sport_name == "nfl":
+            from sports.nfl.teams import find_team_by_abbr
+            team_a_info = find_team_by_abbr(team_a)
+            team_b_info = find_team_by_abbr(team_b)
+            home_team_info = find_team_by_abbr(home_team)
+            if team_a_info:
+                team_a = team_a_info["name"]
+            if team_b_info:
+                team_b = team_b_info["name"]
+            if home_team_info:
+                home_team = home_team_info["name"]
 
         # Build prediction prompt
         if self.config.prompt_builder:
@@ -187,7 +198,7 @@ class Predictor:
             print(f"  home_team param (resolved): '{home_team}'")
             print(f"  Result: HOME='{home_team_name}', AWAY='{away_team_name}'")
 
-            # Get profile folder from teams.py (Bundesliga) or derive from name
+            # Get profile folder from teams.py based on sport
             if self.config.sport_name == "bundesliga":
                 from sports.futbol.bundesliga.teams import find_team_by_name
                 home_info = find_team_by_name(home_team_name)
@@ -202,6 +213,10 @@ class Predictor:
                 if away_info:
                     print(f"    -> profile_folder: '{away_info.get('profile_folder')}'")
                 print(f"  Final folders: home='{home_folder}', away='{away_folder}'")
+            elif self.config.sport_name == "nfl":
+                # NFL profiles use full team names (e.g., 'atlanta_falcons', 'tampa_bay_buccaneers')
+                home_folder = home_team_name.lower().replace(" ", "_").replace(".", "")
+                away_folder = away_team_name.lower().replace(" ", "_").replace(".", "")
             else:
                 # Fallback: convert team names to folder format (lowercase, underscores)
                 home_folder = home_team_name.lower().replace(" ", "_").replace(".", "")
