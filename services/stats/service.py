@@ -78,14 +78,11 @@ class StatsService:
 
         logger.info(f"StatsService initialized for {self.sport}")
 
-    def fetch_rankings(
-        self, skip_if_exists: bool = True, date: str | None = None
-    ) -> dict[str, Any]:
+    def fetch_rankings(self, skip_if_exists: bool = True) -> dict[str, Any]:
         """Fetch league-wide team rankings.
 
         Args:
-            skip_if_exists: If True, load from cache if rankings exist for date
-            date: Date to check (defaults to today)
+            skip_if_exists: If True, load from cache if rankings exist
 
         Returns:
             Dictionary with rankings tables
@@ -94,26 +91,20 @@ class StatsService:
             StatsFetchError: If fetching fails
             StatsParseError: If parsing fails
         """
-        if date is None:
-            date = datetime.now().strftime("%Y-%m-%d")
-
-        if skip_if_exists and self.rankings_exist(date):
-            logger.info(f"Rankings already exist for {date}, loading from cache")
-            return self.load_rankings(date)
+        if skip_if_exists and self.rankings_exist():
+            logger.info("Rankings already exist, loading from cache")
+            return self.load_rankings()
 
         try:
             return self.fetcher.fetch_rankings()
         except (StatsFetchError, StatsParseError) as e:
             self.error_handler.handle(e)
 
-    def fetch_defensive_stats(
-        self, skip_if_exists: bool = True, date: str | None = None
-    ) -> dict[str, Any]:
+    def fetch_defensive_stats(self, skip_if_exists: bool = True) -> dict[str, Any]:
         """Fetch defensive statistics.
 
         Args:
-            skip_if_exists: If True, load from cache if defensive stats exist for date
-            date: Date to check (defaults to today)
+            skip_if_exists: If True, load from cache if defensive stats exist
 
         Returns:
             Dictionary with defensive tables
@@ -122,15 +113,10 @@ class StatsService:
             StatsFetchError: If fetching fails
             StatsParseError: If parsing fails
         """
-        if date is None:
-            date = datetime.now().strftime("%Y-%m-%d")
-
         # Check if defensive stats exist (they're saved with defense_ prefix)
-        if skip_if_exists:
-            date_dir = self.rankings_dir / date
-            if date_dir.exists() and any(f.name.startswith("defense_") for f in date_dir.glob("*.csv")):
-                logger.info(f"Defensive stats already exist for {date}, loading from cache")
-                return self.load_defensive_stats(date)
+        if skip_if_exists and self.defensive_stats_exist():
+            logger.info("Defensive stats already exist, loading from cache")
+            return self.load_defensive_stats()
 
         try:
             return self.fetcher.fetch_defensive_stats()
@@ -138,14 +124,13 @@ class StatsService:
             self.error_handler.handle(e)
 
     def fetch_team_profile(
-        self, team_abbr: str, skip_if_exists: bool = True, date: str | None = None
+        self, team_abbr: str, skip_if_exists: bool = True
     ) -> dict[str, Any]:
         """Fetch team profile data.
 
         Args:
             team_abbr: Team abbreviation (e.g., 'dal', 'buf')
-            skip_if_exists: If True, load from cache if profile exists for date
-            date: Date to check (defaults to today)
+            skip_if_exists: If True, load from cache if profile exists
 
         Returns:
             Dictionary with team profile tables
@@ -154,30 +139,22 @@ class StatsService:
             StatsFetchError: If fetching fails
             StatsParseError: If parsing fails
         """
-        if date is None:
-            date = datetime.now().strftime("%Y-%m-%d")
-
-        if skip_if_exists and self.profile_exists(team_abbr, date):
-            logger.info(f"Profile for {team_abbr.upper()} already exists for {date}, loading from cache")
-            return self.load_team_profile(team_abbr, date)
+        if skip_if_exists and self.profile_exists(team_abbr):
+            logger.info(f"Profile for {team_abbr.upper()} already exists, loading from cache")
+            return self.load_team_profile(team_abbr)
 
         try:
             return self.fetcher.fetch_team_profile(team_abbr)
         except (StatsFetchError, StatsParseError) as e:
             self.error_handler.handle(e, context={"team": team_abbr})
 
-    def save_rankings(
-        self,
-        rankings_data: dict[str, Any],
-        date: str | None = None,
-    ) -> Path:
-        """Save rankings to the data directory as CSV files.
+    def save_rankings(self, rankings_data: dict[str, Any]) -> Path:
+        """Save rankings to flat directory as CSV files (no date subfolders).
 
         Each table in rankings_data is saved as a separate CSV file.
 
         Args:
             rankings_data: Rankings data dictionary with 'tables' key
-            date: Date string (YYYY-MM-DD), defaults to today
 
         Returns:
             Path to the directory containing CSV files
@@ -185,12 +162,7 @@ class StatsService:
         Raises:
             DataIOError: If saving fails
         """
-        if date is None:
-            date = datetime.now().strftime("%Y-%m-%d")
-
-        # Build directory path
-        date_dir = self.rankings_dir / date
-        date_dir.mkdir(parents=True, exist_ok=True)
+        self.rankings_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             # Save each table as separate CSV
@@ -206,30 +178,25 @@ class StatsService:
                 else:
                     continue
 
-                csv_path = date_dir / f"{table_name}.csv"
+                csv_path = self.rankings_dir / f"{table_name}.csv"
                 df.to_csv(csv_path, index=False)
 
-            logger.info(f"Saved {len(tables)} ranking tables to {date_dir}")
-            return date_dir
+            logger.info(f"Saved {len(tables)} ranking tables to {self.rankings_dir}")
+            return self.rankings_dir
         except Exception as e:
             error = DataIOError(
                 f"Failed to save rankings: {e}",
-                context={"directory": str(date_dir), "error": str(e)}
+                context={"directory": str(self.rankings_dir), "error": str(e)}
             )
             self.error_handler.handle(error)
 
-    def save_defensive_stats(
-        self,
-        defensive_data: dict[str, Any],
-        date: str | None = None,
-    ) -> Path:
-        """Save defensive stats to the data directory as CSV files.
+    def save_defensive_stats(self, defensive_data: dict[str, Any]) -> Path:
+        """Save defensive stats to flat directory as CSV files (no date subfolders).
 
         Each table is saved as a separate CSV with 'defense_' prefix.
 
         Args:
             defensive_data: Defensive stats dictionary with 'tables' key
-            date: Date string (YYYY-MM-DD), defaults to today
 
         Returns:
             Path to the directory containing CSV files
@@ -237,12 +204,7 @@ class StatsService:
         Raises:
             DataIOError: If saving fails
         """
-        if date is None:
-            date = datetime.now().strftime("%Y-%m-%d")
-
-        # Build directory path
-        date_dir = self.rankings_dir / date
-        date_dir.mkdir(parents=True, exist_ok=True)
+        self.rankings_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             # Save each table as separate CSV with defense_ prefix
@@ -252,18 +214,21 @@ class StatsService:
                     df = table_data
                 elif isinstance(table_data, list):
                     df = pd.DataFrame(table_data)
+                elif isinstance(table_data, dict) and "data" in table_data:
+                    # Handle fetcher format: {"table_name": ..., "columns": ..., "data": [...]}
+                    df = pd.DataFrame(table_data["data"])
                 else:
                     continue
 
-                csv_path = date_dir / f"defense_{table_name}.csv"
+                csv_path = self.rankings_dir / f"defense_{table_name}.csv"
                 df.to_csv(csv_path, index=False)
 
-            logger.info(f"Saved {len(tables)} defensive tables to {date_dir}")
-            return date_dir
+            logger.info(f"Saved {len(tables)} defensive tables to {self.rankings_dir}")
+            return self.rankings_dir
         except Exception as e:
             error = DataIOError(
                 f"Failed to save defensive stats: {e}",
-                context={"directory": str(date_dir), "error": str(e)}
+                context={"directory": str(self.rankings_dir), "error": str(e)}
             )
             self.error_handler.handle(error)
 
@@ -271,16 +236,14 @@ class StatsService:
         self,
         profile_data: dict[str, Any],
         team_abbr: str,
-        date: str | None = None,
     ) -> Path:
-        """Save team profile to the data directory as CSV files.
+        """Save team profile to flat directory as CSV files (no date subfolders).
 
         Each table is saved as a separate CSV in team subdirectory.
 
         Args:
             profile_data: Profile data dictionary with 'tables' key
             team_abbr: Team abbreviation
-            date: Date string (YYYY-MM-DD), defaults to today
 
         Returns:
             Path to the team directory containing CSV files
@@ -288,13 +251,10 @@ class StatsService:
         Raises:
             DataIOError: If saving fails
         """
-        if date is None:
-            date = datetime.now().strftime("%Y-%m-%d")
-
         team_abbr = team_abbr.lower()
 
-        # Build directory path: profiles/{date}/{team}/
-        team_dir = self.profiles_dir / date / team_abbr
+        # Build directory path: profiles/{team}/
+        team_dir = self.profiles_dir / team_abbr
         team_dir.mkdir(parents=True, exist_ok=True)
 
         try:
@@ -323,11 +283,8 @@ class StatsService:
             )
             self.error_handler.handle(error)
 
-    def load_rankings(self, date: str) -> dict[str, Any]:
-        """Load rankings for a specific date from CSV files.
-
-        Args:
-            date: Date string (YYYY-MM-DD)
+    def load_rankings(self) -> dict[str, Any]:
+        """Load rankings from flat directory structure.
 
         Returns:
             Rankings data dictionary with 'tables' key
@@ -336,42 +293,37 @@ class StatsService:
             DataNotFoundError: If rankings directory not found
             DataIOError: If loading fails
         """
-        date_dir = self.rankings_dir / date
-
-        if not date_dir.exists():
+        if not self.rankings_dir.exists():
             raise DataNotFoundError(
-                f"Rankings not found for {date}",
-                context={"directory": str(date_dir), "date": date}
+                "Rankings directory not found",
+                context={"directory": str(self.rankings_dir)}
             )
 
         try:
             tables = {}
             # Load all CSV files (excluding defense_ prefixed ones)
-            for csv_file in date_dir.glob("*.csv"):
+            for csv_file in self.rankings_dir.glob("*.csv"):
                 if not csv_file.name.startswith("defense_"):
                     tables[csv_file.stem] = pd.read_csv(csv_file).to_dict("records")
 
             if not tables:
                 raise DataNotFoundError(
-                    f"No ranking CSV files found for {date}",
-                    context={"directory": str(date_dir), "date": date}
+                    "No ranking CSV files found",
+                    context={"directory": str(self.rankings_dir)}
                 )
 
-            return {"tables": tables, "date": date}
+            return {"tables": tables}
         except DataNotFoundError:
             raise
         except Exception as e:
             error = DataIOError(
                 f"Failed to load rankings: {e}",
-                context={"directory": str(date_dir), "error": str(e)}
+                context={"directory": str(self.rankings_dir), "error": str(e)}
             )
             self.error_handler.handle(error)
 
-    def load_defensive_stats(self, date: str) -> dict[str, Any]:
-        """Load defensive stats for a specific date from CSV files.
-
-        Args:
-            date: Date string (YYYY-MM-DD)
+    def load_defensive_stats(self) -> dict[str, Any]:
+        """Load defensive stats from flat directory structure.
 
         Returns:
             Defensive stats dictionary with 'tables' key
@@ -380,44 +332,41 @@ class StatsService:
             DataNotFoundError: If files not found
             DataIOError: If loading fails
         """
-        date_dir = self.rankings_dir / date
-
-        if not date_dir.exists():
+        if not self.rankings_dir.exists():
             raise DataNotFoundError(
-                f"Defensive stats not found for {date}",
-                context={"directory": str(date_dir), "date": date}
+                "Defensive stats not found",
+                context={"directory": str(self.rankings_dir)}
             )
 
         try:
             tables = {}
             # Load all defense_ prefixed CSV files
-            for csv_file in date_dir.glob("defense_*.csv"):
+            for csv_file in self.rankings_dir.glob("defense_*.csv"):
                 # Remove defense_ prefix from table name
                 table_name = csv_file.stem.replace("defense_", "")
                 tables[table_name] = pd.read_csv(csv_file).to_dict("records")
 
             if not tables:
                 raise DataNotFoundError(
-                    f"No defensive CSV files found for {date}",
-                    context={"directory": str(date_dir), "date": date}
+                    "No defensive CSV files found",
+                    context={"directory": str(self.rankings_dir)}
                 )
 
-            return {"tables": tables, "date": date}
+            return {"tables": tables}
         except DataNotFoundError:
             raise
         except Exception as e:
             error = DataIOError(
                 f"Failed to load defensive stats: {e}",
-                context={"directory": str(date_dir), "error": str(e)}
+                context={"directory": str(self.rankings_dir), "error": str(e)}
             )
             self.error_handler.handle(error)
 
-    def load_team_profile(self, team_abbr: str, date: str) -> dict[str, Any]:
-        """Load team profile for a specific date from CSV files.
+    def load_team_profile(self, team_abbr: str) -> dict[str, Any]:
+        """Load team profile from flat directory structure.
 
         Args:
             team_abbr: Team abbreviation
-            date: Date string (YYYY-MM-DD)
 
         Returns:
             Profile data dictionary with 'tables' key
@@ -427,12 +376,12 @@ class StatsService:
             DataIOError: If loading fails
         """
         team_abbr = team_abbr.lower()
-        team_dir = self.profiles_dir / date / team_abbr
+        team_dir = self.profiles_dir / team_abbr
 
         if not team_dir.exists():
             raise DataNotFoundError(
-                f"Profile not found for {team_abbr.upper()} on {date}",
-                context={"directory": str(team_dir), "team": team_abbr, "date": date}
+                f"Profile not found for {team_abbr.upper()}",
+                context={"directory": str(team_dir), "team": team_abbr}
             )
 
         try:
@@ -442,11 +391,11 @@ class StatsService:
 
             if not tables:
                 raise DataNotFoundError(
-                    f"No profile CSV files found for {team_abbr.upper()} on {date}",
-                    context={"directory": str(team_dir), "team": team_abbr, "date": date}
+                    f"No profile CSV files found for {team_abbr.upper()}",
+                    context={"directory": str(team_dir), "team": team_abbr}
                 )
 
-            return {"tables": tables, "team": team_abbr, "date": date}
+            return {"tables": tables, "team": team_abbr}
         except DataNotFoundError:
             raise
         except Exception as e:
@@ -456,101 +405,86 @@ class StatsService:
             )
             self.error_handler.handle(error)
 
-    def load_rankings_safe(self, date: str) -> Optional[dict[str, Any]]:
+    def load_rankings_safe(self) -> Optional[dict[str, Any]]:
         """Load rankings, returning None if not found.
-
-        Args:
-            date: Date string (YYYY-MM-DD)
 
         Returns:
             Rankings data dictionary or None
         """
         try:
-            return self.load_rankings(date)
+            return self.load_rankings()
         except DataNotFoundError:
             return None
 
-    def load_team_profile_safe(self, team_abbr: str, date: str) -> Optional[dict[str, Any]]:
+    def load_team_profile_safe(self, team_abbr: str) -> Optional[dict[str, Any]]:
         """Load team profile, returning None if not found.
 
         Args:
             team_abbr: Team abbreviation
-            date: Date string (YYYY-MM-DD)
 
         Returns:
             Profile data dictionary or None
         """
         try:
-            return self.load_team_profile(team_abbr, date)
+            return self.load_team_profile(team_abbr)
         except DataNotFoundError:
             return None
 
-    def get_available_dates(self) -> List[str]:
-        """Get list of dates that have rankings data available.
-
-        Returns:
-            Sorted list of dates in YYYY-MM-DD format (most recent first)
-        """
-        if not self.rankings_dir.exists():
-            return []
-
-        dates = [
-            d.name for d in self.rankings_dir.iterdir()
-            if d.is_dir() and len(d.name.split("-")) == 3
-        ]
-
-        return sorted(dates, reverse=True)
-
-    def get_available_profiles(self, date: str) -> List[str]:
-        """Get list of team profiles available for a specific date.
-
-        Args:
-            date: Date string (YYYY-MM-DD)
+    def get_available_profiles(self) -> List[str]:
+        """Get list of team profiles available.
 
         Returns:
             List of team abbreviations with available profiles
         """
-        date_dir = self.profiles_dir / date
-
-        if not date_dir.exists():
+        if not self.profiles_dir.exists():
             return []
 
-        # Return directories (team abbreviations)
+        # Return directories (team abbreviations), excluding date folders
         return sorted([
-            d.name for d in date_dir.iterdir() if d.is_dir()
+            d.name for d in self.profiles_dir.iterdir()
+            if d.is_dir() and not d.name.startswith(".") and len(d.name) > 10
         ])
 
-    def rankings_exist(self, date: str) -> bool:
-        """Check if rankings exist for a specific date.
-
-        Args:
-            date: Date string (YYYY-MM-DD)
+    def rankings_exist(self) -> bool:
+        """Check if rankings exist in flat structure.
 
         Returns:
             True if rankings CSV files exist
         """
-        date_dir = self.rankings_dir / date
-        if not date_dir.exists():
+        if not self.rankings_dir.exists():
             return False
         # Check for any non-defense CSV files
         return any(
             f.suffix == ".csv" and not f.name.startswith("defense_")
-            for f in date_dir.iterdir()
+            for f in self.rankings_dir.iterdir() if f.is_file()
         )
 
-    def profile_exists(self, team_abbr: str, date: str) -> bool:
-        """Check if a team profile exists for a specific date.
+    def defensive_stats_exist(self) -> bool:
+        """Check if defensive stats exist in flat structure.
+
+        Returns:
+            True if defensive CSV files exist
+        """
+        if not self.rankings_dir.exists():
+            return False
+        # Check for any defense_ prefixed CSV files
+        return any(
+            f.name.startswith("defense_") and f.suffix == ".csv"
+            for f in self.rankings_dir.iterdir() if f.is_file()
+        )
+
+    def profile_exists(self, team_abbr: str) -> bool:
+        """Check if a team profile exists.
 
         Args:
             team_abbr: Team abbreviation
-            date: Date string (YYYY-MM-DD)
 
         Returns:
             True if profile directory with CSV files exists
         """
         team_abbr = team_abbr.lower()
-        team_dir = self.profiles_dir / date / team_abbr
+        team_dir = self.profiles_dir / team_abbr
         if not team_dir.exists():
             return False
         # Check for any CSV files
-        return any(f.suffix == ".csv" for f in team_dir.iterdir())
+        return any(f.suffix == ".csv" for f in team_dir.iterdir() if f.is_file())

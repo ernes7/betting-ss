@@ -5,7 +5,6 @@ all their stats (rankings, defensive stats, team profiles).
 """
 
 import random
-from datetime import datetime
 
 from sports.nfl.teams import TEAMS, DK_TO_PFR_ABBR
 from sports.nfl.nfl_config import get_nfl_stats_config
@@ -43,12 +42,10 @@ def run_simulation():
     config = get_nfl_stats_config()
     stats_service = StatsService(sport="nfl", config=config)
 
-    today = datetime.now().strftime("%Y-%m-%d")
-
     # Fetch rankings (league-wide stats)
     print(f"\n[1/3] Fetching league rankings...")
     try:
-        rankings = stats_service.fetch_rankings(skip_if_exists=True, date=today)
+        rankings = stats_service.fetch_rankings(skip_if_exists=True)
         tables = rankings.get("tables", {})
         print(f"  Loaded {len(tables)} ranking tables: {list(tables.keys())}")
     except Exception as e:
@@ -58,7 +55,7 @@ def run_simulation():
     # Fetch defensive stats
     print(f"\n[2/3] Fetching defensive stats...")
     try:
-        defensive = stats_service.fetch_defensive_stats(skip_if_exists=True, date=today)
+        defensive = stats_service.fetch_defensive_stats(skip_if_exists=True)
         tables = defensive.get("tables", {})
         print(f"  Loaded {len(tables)} defensive tables: {list(tables.keys())}")
     except Exception as e:
@@ -77,7 +74,6 @@ def run_simulation():
             profile = stats_service.fetch_team_profile(
                 team_abbr=pfr_abbr,
                 skip_if_exists=True,
-                date=today
             )
             tables = profile.get("tables", {})
             profiles[team["abbreviation"]] = profile
@@ -90,7 +86,6 @@ def run_simulation():
     print("SIMULATION COMPLETE")
     print("=" * 60)
     print(f"\nMatchup: {away_team['name']} @ {home_team['name']}")
-    print(f"Date: {today}")
     print(f"\nData loaded:")
     print(f"  - Rankings: {'Yes' if rankings else 'No'}")
     print(f"  - Defensive: {'Yes' if defensive else 'No'}")

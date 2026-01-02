@@ -114,6 +114,7 @@ def get_nfl_stats_config() -> StatsServiceConfig:
             "advanced_defense": "advanced_defense",
             "passing_defense": "passing",
             "rushing_defense": "rushing",
+            "scoring_defense": "team_scoring",
         },
         profile_tables={
             "injury_report": "{team}_injury_report",

@@ -68,9 +68,8 @@ def build_bundesliga_prompt(
     Returns:
         Prompt string for Claude API
     """
-    # Load rankings (get latest date folder)
-    rankings_date_dir = get_latest_date_folder(rankings_dir)
-    rankings = load_csv_files(rankings_date_dir) if rankings_date_dir else {}
+    # Load rankings (flat structure - no date folders)
+    rankings = load_csv_files(rankings_dir)
 
     # Load fixtures
     home_fixtures = ""
@@ -94,9 +93,8 @@ def build_bundesliga_prompt(
     print(f"\n[1] MATCHUP:")
     print(f"    {away_team} @ {home_team}")
 
-    print(f"\n[2] RANKINGS:")
-    print(f"    Input dir:  '{rankings_dir}'")
-    print(f"    Date folder: '{rankings_date_dir}'")
+    print(f"\n[2] RANKINGS (flat structure):")
+    print(f"    Dir:  '{rankings_dir}'")
     if rankings:
         print(f"    Tables loaded: {len(rankings)}")
         for name, content in rankings.items():

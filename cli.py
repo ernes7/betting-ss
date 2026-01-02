@@ -41,6 +41,121 @@ SPORTS = {
 
 
 # =============================================================================
+# Claude Chat Export Configuration
+# =============================================================================
+
+# CSV files to include in Claude Chat bundle (20 files max)
+CLAUDE_CHAT_RANKING_FILES = [
+    "team_offense.csv", "passing_offense.csv", "rushing_offense.csv", "scoring_offense.csv",
+    "defense_team_defense.csv", "defense_passing_defense.csv", "defense_rushing_defense.csv",
+    "defense_advanced_defense.csv", "afc_standings.csv", "nfc_standings.csv"
+]
+
+CLAUDE_CHAT_PROFILE_FILES = [
+    "schedule_results.csv", "passing.csv", "rushing_receiving.csv", "scoring_summary.csv"
+]
+
+CLAUDE_CHAT_ODDS_FILES = [
+    "game_lines.csv", "player_props.csv"
+]
+
+
+def _slug_to_dk_abbr(team_slug: str) -> Optional[str]:
+    """Convert team slug (e.g., 'atlanta_falcons') to DraftKings abbreviation lowercase (e.g., 'atl').
+
+    Args:
+        team_slug: Team slug with underscores (e.g., 'chicago_bears')
+
+    Returns:
+        DraftKings abbreviation lowercase or None if not found
+    """
+    from sports.nfl.teams import find_team_by_name
+
+    # Convert slug to title case name: "chicago_bears" -> "Chicago Bears"
+    team_name = team_slug.replace("_", " ").title()
+
+    # Handle special cases like "49ers"
+    if "49Ers" in team_name:
+        team_name = team_name.replace("49Ers", "49ers")
+
+    team = find_team_by_name(team_name)
+    if team:
+        return team["abbreviation"].lower()
+    return None
+
+
+def export_claude_chat_bundle(
+    away_team_slug: str,
+    home_team_slug: str,
+    game_date: str,
+    sport: str = "nfl",
+) -> Optional[str]:
+    """Export 20 CSVs for Claude Chat to data/claude_chat/{matchup}_{date}/
+
+    Args:
+        away_team_slug: Away team slug (e.g., 'chicago_bears')
+        home_team_slug: Home team slug (e.g., 'san_francisco_49ers')
+        game_date: Game date in YYYY-MM-DD format
+        sport: Sport code (default 'nfl')
+
+    Returns:
+        Path to output directory, or None if failed
+    """
+    from pathlib import Path
+    import shutil
+
+    if sport != "nfl":
+        return None  # Only NFL supported for now
+
+    # Target folder
+    matchup = f"{away_team_slug}_{home_team_slug}".lower()
+    output_dir = Path(f"data/claude_chat/{matchup}_{game_date}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Source paths
+    rankings_dir = Path(f"sports/nfl/data/rankings")
+    profiles_dir = Path(f"sports/nfl/data/profiles")
+
+    # Odds use DraftKings abbreviations: home_away format (e.g., 'atl_lar' for ATL home, LAR away)
+    away_abbr = _slug_to_dk_abbr(away_team_slug)
+    home_abbr = _slug_to_dk_abbr(home_team_slug)
+    if away_abbr and home_abbr:
+        odds_dir = Path(f"sports/nfl/data/odds/{game_date}/{home_abbr}_{away_abbr}")
+    else:
+        odds_dir = Path(f"sports/nfl/data/odds/{game_date}/nonexistent")
+
+    files_copied = 0
+
+    # Copy rankings (10 files)
+    for f in CLAUDE_CHAT_RANKING_FILES:
+        src = rankings_dir / f
+        if src.exists():
+            shutil.copy(src, output_dir / f)
+            files_copied += 1
+
+    # Copy team profiles (4 files each, prefixed with team name)
+    for team_slug in [away_team_slug.lower(), home_team_slug.lower()]:
+        team_dir = profiles_dir / team_slug
+        for f in CLAUDE_CHAT_PROFILE_FILES:
+            src = team_dir / f
+            if src.exists():
+                dest_name = f"{team_slug}_{f}"  # Prefix with team name
+                shutil.copy(src, output_dir / dest_name)
+                files_copied += 1
+
+    # Copy odds (2 files)
+    for f in CLAUDE_CHAT_ODDS_FILES:
+        src = odds_dir / f
+        if src.exists():
+            shutil.copy(src, output_dir / f)
+            files_copied += 1
+
+    if files_copied > 0:
+        return str(output_dir)
+    return None
+
+
+# =============================================================================
 # Helper Functions for Game/Date Selection
 # =============================================================================
 
@@ -440,6 +555,18 @@ def run_fetch_odds(orchestrator: CLIOrchestrator):
                 console.print(f"    [green]Saved: {away} @ {home} ({game_date})[/green]")
                 console.print(f"    [dim]Path: {path}[/dim]")
                 success_count += 1
+
+                # Export Claude Chat bundle (NFL only)
+                if orchestrator.sport == "nfl" and game_date:
+                    from sports.nfl.teams import find_team_by_abbr as find_nfl_team
+                    away_team = find_nfl_team(away)
+                    home_team = find_nfl_team(home)
+                    if away_team and home_team:
+                        away_slug = away_team["name"].lower().replace(" ", "_")
+                        home_slug = home_team["name"].lower().replace(" ", "_")
+                        bundle_path = export_claude_chat_bundle(away_slug, home_slug, game_date, "nfl")
+                        if bundle_path:
+                            console.print(f"    [dim]Claude Chat bundle: {bundle_path}[/dim]")
             else:
                 console.print(f"    [yellow]No odds data returned[/yellow]")
 
@@ -517,10 +644,13 @@ def run_fetch_stats(orchestrator: CLIOrchestrator):
     elif orchestrator.sport == "bundesliga":
         from sports.futbol.bundesliga.teams import find_team_by_name as find_bundesliga_team
 
-    # Collect unique teams from selected games
+    # Collect unique teams from selected games and track game pairings for export
     teams_to_fetch = set()
+    games_for_export = []  # Track (away_slug, home_slug, game_date) for Claude Chat export
+
     for game in selected:
         matchup = game.get("matchup", "")
+        game_date = game.get("start_date", "")[:10] if game.get("start_date") else None
         away_name, home_name = None, None
 
         # Parse matchup - handle "Away @ Home" or "Away vs Home"
@@ -533,10 +663,18 @@ def run_fetch_stats(orchestrator: CLIOrchestrator):
                 away_name, home_name = parts
 
         if away_name and home_name:
-            teams_to_fetch.add(away_name.strip())
-            teams_to_fetch.add(home_name.strip())
+            away_name = away_name.strip()
+            home_name = home_name.strip()
+            teams_to_fetch.add(away_name)
+            teams_to_fetch.add(home_name)
+            if game_date:
+                games_for_export.append((away_name, home_name, game_date))
 
     console.print(f"\n[bold]Will fetch stats for {len(teams_to_fetch)} team(s)...[/bold]")
+
+    # Import NFL cleaner if needed
+    if orchestrator.sport == "nfl":
+        from sports.nfl.cleaner import clean_rankings, clean_profile
 
     # Step 1: Fetch rankings (once)
     console.print("\n[cyan]Step 1: Fetching league rankings...[/cyan]")
@@ -547,9 +685,12 @@ def run_fetch_stats(orchestrator: CLIOrchestrator):
             console=console,
         ) as progress:
             progress.add_task(f"Fetching rankings from {source_name}...", total=None)
-            rankings = orchestrator.stats_service.fetch_rankings()
+            rankings = orchestrator.stats_service.fetch_rankings(skip_if_exists=False)
 
         if rankings:
+            # Clean data for NFL
+            if orchestrator.sport == "nfl":
+                rankings = clean_rankings(rankings)
             path = orchestrator.stats_service.save_rankings(rankings)
             tables_data = rankings.get("tables", {})
             table_names = list(tables_data.keys())
@@ -561,8 +702,35 @@ def run_fetch_stats(orchestrator: CLIOrchestrator):
     except Exception as e:
         console.print(f"  [red]Error fetching rankings: {e}[/red]")
 
-    # Step 2: Fetch team profiles
-    console.print(f"\n[cyan]Step 2: Fetching team profiles...[/cyan]")
+    # Step 2: Fetch defensive stats (NFL only)
+    if orchestrator.sport == "nfl":
+        console.print("\n[cyan]Step 2: Fetching defensive stats...[/cyan]")
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task(f"Fetching defensive stats from {source_name}...", total=None)
+                defensive = orchestrator.stats_service.fetch_defensive_stats(skip_if_exists=False)
+
+            if defensive:
+                # Clean data (uses same logic as rankings)
+                defensive = clean_rankings(defensive)
+                path = orchestrator.stats_service.save_defensive_stats(defensive)
+                tables_data = defensive.get("tables", {})
+                table_names = list(tables_data.keys())
+                console.print(f"  [green]Saved {len(table_names)} defensive tables[/green]")
+                console.print(f"  [dim]Tables: {', '.join(table_names)}[/dim]")
+                console.print(f"  [dim]Path: {path}[/dim]")
+            else:
+                console.print("  [yellow]No defensive data returned[/yellow]")
+        except Exception as e:
+            console.print(f"  [red]Error fetching defensive stats: {e}[/red]")
+
+    # Step 3: Fetch team profiles (Step 2 for non-NFL sports)
+    step_num = 3 if orchestrator.sport == "nfl" else 2
+    console.print(f"\n[cyan]Step {step_num}: Fetching team profiles...[/cyan]")
     success_count = 0
 
     for team_name in sorted(teams_to_fetch):
@@ -602,6 +770,9 @@ def run_fetch_stats(orchestrator: CLIOrchestrator):
                 profile = orchestrator.stats_service.fetch_team_profile(team_id)
 
             if profile:
+                # Clean data for NFL
+                if orchestrator.sport == "nfl":
+                    profile = clean_profile(profile)
                 # Use team slug for folder name
                 if orchestrator.sport == "bundesliga":
                     team_slug_clean = team_slug.replace("-Stats", "").lower().replace("-", "_")
@@ -620,6 +791,30 @@ def run_fetch_stats(orchestrator: CLIOrchestrator):
             console.print(f"    [red]Error: {e}[/red]")
 
     console.print(f"\n[bold green]Complete! Fetched profiles for {success_count}/{len(teams_to_fetch)} teams[/bold green]")
+
+    # Step 4: Export Claude Chat bundles (NFL only)
+    if orchestrator.sport == "nfl" and games_for_export:
+        console.print(f"\n[cyan]Step 4: Creating Claude Chat bundles...[/cyan]")
+        export_count = 0
+
+        for away_name, home_name, game_date in games_for_export:
+            # Resolve team slugs
+            away_team = find_nfl_team(away_name)
+            home_team = find_nfl_team(home_name)
+
+            if not away_team or not home_team:
+                continue
+
+            away_slug = away_team["name"].lower().replace(" ", "_")
+            home_slug = home_team["name"].lower().replace(" ", "_")
+
+            bundle_path = export_claude_chat_bundle(away_slug, home_slug, game_date, "nfl")
+            if bundle_path:
+                console.print(f"  [green]Exported: {away_slug} @ {home_slug} ({game_date})[/green]")
+                console.print(f"  [dim]Path: {bundle_path}[/dim]")
+                export_count += 1
+
+        console.print(f"\n[bold green]Exported {export_count} Claude Chat bundle(s)[/bold green]")
 
 
 def run_ev_calculator(orchestrator: CLIOrchestrator):

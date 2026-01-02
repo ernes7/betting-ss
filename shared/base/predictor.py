@@ -225,21 +225,13 @@ class Predictor:
                 print(f"  home_folder: '{home_folder}'")
                 print(f"  away_folder: '{away_folder}'")
 
-            # Get latest profile date folder
+            # Build profile paths (flat structure - no date folders)
             profiles_base = self.config.data_profiles_dir
-            profile_dates = sorted(
-                [d for d in os.listdir(profiles_base) if os.path.isdir(os.path.join(profiles_base, d))],
-                reverse=True
-            ) if os.path.exists(profiles_base) else []
-            latest_profile_date = profile_dates[0] if profile_dates else ""
+            home_profile_path = os.path.join(profiles_base, home_folder)
+            away_profile_path = os.path.join(profiles_base, away_folder)
 
-            print(f"\nProfile paths:")
+            print(f"\nProfile paths (flat structure):")
             print(f"  profiles_base:      '{profiles_base}'")
-            print(f"  available dates:    {profile_dates[:3]}{'...' if len(profile_dates) > 3 else ''}")
-            print(f"  latest_profile_date: '{latest_profile_date}'")
-
-            home_profile_path = os.path.join(profiles_base, latest_profile_date, home_folder)
-            away_profile_path = os.path.join(profiles_base, latest_profile_date, away_folder)
             print(f"  home_profile_dir:   '{home_profile_path}'")
             print(f"    -> exists: {os.path.exists(home_profile_path)}")
             if os.path.exists(home_profile_path):
@@ -257,11 +249,11 @@ class Predictor:
             else:
                 print(f"    -> exists: False")
 
-            print(f"\nRankings:")
+            print(f"\nRankings (flat structure):")
             print(f"  rankings_dir: '{self.config.data_rankings_dir}'")
             if os.path.exists(self.config.data_rankings_dir):
-                ranking_dates = sorted(os.listdir(self.config.data_rankings_dir), reverse=True)
-                print(f"    -> available dates: {ranking_dates[:3]}{'...' if len(ranking_dates) > 3 else ''}")
+                ranking_files = [f for f in os.listdir(self.config.data_rankings_dir) if f.endswith('.csv')]
+                print(f"    -> available files: {ranking_files[:5]}{'...' if len(ranking_files) > 5 else ''}")
 
             print(f"\n{'='*60}")
             print("Calling sport-specific prompt builder...")

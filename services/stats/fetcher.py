@@ -190,44 +190,66 @@ class StatsFetcher:
             "tables": {}
         }
 
-        try:
-            # Fetch HTML and extract all tables
-            html = self.scraper.fetch_html(url)
-            all_tables = self.scraper.extract_tables(html, extract_comments=True)
+        # Guard against None or empty tables_config
+        if tables_config is None:
+            logger.error(f"tables_config is None for {data_type}")
+            return result_data
+        if not tables_config:
+            logger.warning(f"No tables configured for {data_type}")
+            return result_data
 
-            logger.info(f"Found {len(all_tables)} tables on {data_type} page")
+        logger.debug(f"Fetching {data_type} with tables: {list(tables_config.keys())}")
+
+        try:
+            from io import StringIO
+
+            # Fetch HTML
+            html = self.scraper.fetch_html(url)
+
+            # Extract comments for tables hidden in HTML comments (PFR does this)
+            comments = re.findall(r'<!--(.+?)-->', html, re.DOTALL)
 
             tables_extracted = 0
             tables_missing = []
 
-            # Extract configured tables
+            # Extract configured tables by ID directly
             for table_name, table_id in tables_config.items():
                 logger.debug(f"Looking for {table_name} (#{table_id})")
+                found = False
 
-                # Find table in HTML by ID
-                table_pattern = rf'<table[^>]*id="{table_id}"[^>]*>'
-                match = re.search(table_pattern, html)
-
-                if match:
-                    # Count tables before this one
-                    html_before = html[:match.start()]
-                    tables_before = len(re.findall(r'<table[^>]*>', html_before))
-
-                    # Also count tables in comments before this point
-                    comments_before = re.findall(r'<!--(.+?)-->', html_before, re.DOTALL)
-                    for comment in comments_before:
-                        tables_before += len(re.findall(r'<table[^>]*>', comment))
-
-                    if tables_before < len(all_tables):
-                        df = all_tables[tables_before]
+                # Try to extract by ID from main HTML first
+                try:
+                    dfs = pd.read_html(StringIO(html), attrs={'id': table_id})
+                    if dfs:
+                        df = dfs[0]
                         table_data = self._dataframe_to_dict(df, table_name)
                         result_data["tables"][table_name] = table_data
                         tables_extracted += 1
                         logger.debug(f"Extracted {len(table_data.get('data', []))} rows from {table_name}")
-                        continue
+                        found = True
+                except ValueError:
+                    pass  # Table not found in main HTML
 
-                tables_missing.append(table_name)
-                logger.debug(f"Table '{table_id}' not found")
+                # If not found, search in HTML comments (PFR hides many tables)
+                if not found:
+                    for comment in comments:
+                        if f'id="{table_id}"' in comment:
+                            try:
+                                dfs = pd.read_html(StringIO(comment), attrs={'id': table_id})
+                                if dfs:
+                                    df = dfs[0]
+                                    table_data = self._dataframe_to_dict(df, table_name)
+                                    result_data["tables"][table_name] = table_data
+                                    tables_extracted += 1
+                                    logger.debug(f"Extracted {len(table_data.get('data', []))} rows from {table_name} (from comment)")
+                                    found = True
+                                    break
+                            except ValueError:
+                                pass
+
+                if not found:
+                    tables_missing.append(table_name)
+                    logger.debug(f"Table '{table_id}' not found")
 
             logger.info(
                 f"Extracted {tables_extracted}/{len(tables_config)} {data_type} tables"

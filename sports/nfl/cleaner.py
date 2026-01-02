@@ -56,7 +56,7 @@ def clean_rankings(rankings_data: Dict[str, Any]) -> Dict[str, Any]:
             cleaned["tables"][table_name] = table_data
             continue
 
-        column_map = table_config.get("columns", {})
+        column_map = table_config.get("columns") or {}
         df = pd.DataFrame(table_data["data"])
 
         # Apply column mapping
@@ -110,7 +110,7 @@ def clean_profile(profile_data: Dict[str, Any]) -> Dict[str, Any]:
             cleaned["tables"][table_name] = table_data
             continue
 
-        column_map = table_config.get("columns", {})
+        column_map = table_config.get("columns") or {}
         df = pd.DataFrame(table_data["data"])
 
         # Apply column mapping

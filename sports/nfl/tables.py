@@ -272,20 +272,23 @@ PROFILE_SCORING_COLUMNS = {
 # TABLE CONFIGURATIONS
 # =============================================================================
 
-# Rankings page: /years/2025/
+# Rankings page: /years/2025/ (offense stats only)
 RANKINGS_TABLES = {
-    "team_offense": {"index": 0, "columns": TEAM_STATS_COLUMNS},
-    "team_defense": {"index": 1, "columns": TEAM_STATS_COLUMNS},
-    "passing_offense": {"index": 2, "columns": PASSING_COLUMNS, "needs_header_fix": True},
-    "passing_defense": {"index": 3, "columns": PASSING_COLUMNS, "needs_header_fix": True},
-    "rushing_offense": {"index": 4, "columns": RUSHING_COLUMNS, "needs_header_fix": True},
-    "rushing_defense": {"index": 5, "columns": RUSHING_COLUMNS, "needs_header_fix": True},
+    "afc_standings": {"index": 0, "columns": None},
+    "nfc_standings": {"index": 1, "columns": None},
+    "team_offense": {"index": 4, "columns": TEAM_STATS_COLUMNS},
+    "passing_offense": {"index": 5, "columns": PASSING_COLUMNS, "needs_header_fix": True},
+    "rushing_offense": {"index": 6, "columns": RUSHING_COLUMNS, "needs_header_fix": True},
+    "scoring_offense": {"index": 10, "columns": SCORING_COLUMNS, "needs_header_fix": True},
 }
 
 # Defensive stats page: /years/2025/opp.htm
 DEFENSE_TABLES = {
-    "scoring_offense": {"index": 0, "columns": SCORING_COLUMNS, "needs_header_fix": True},
+    "team_defense": {"index": 0, "columns": TEAM_STATS_COLUMNS},
     "advanced_defense": {"index": 1, "columns": ADVANCED_DEFENSE_COLUMNS, "needs_header_fix": True},
+    "passing_defense": {"index": 2, "columns": PASSING_COLUMNS, "needs_header_fix": True},
+    "rushing_defense": {"index": 3, "columns": RUSHING_COLUMNS, "needs_header_fix": True},
+    "scoring_defense": {"index": 7, "columns": SCORING_COLUMNS, "needs_header_fix": True},
 }
 
 # Team profile page: /teams/{abbr}/2025.htm
